@@ -408,16 +408,19 @@ class Task:
             self.pd_predicted = 1
 
 
-def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
-    """Devuelve dos diccionarios, ambos con la ID del sujeto como clave. En el primero
-    el valor es una tupla con el estado PD y los años PD y en el otro una lista con las
-    tareas 2, 3 y 4 del sujeto.
+def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]], dict[int, dict[int, list[list[int]]]], dict[int, dict[int, list[list[int]]]]]:
+    """
+    Devuelve tres diccionarios con la ID del sujeto como clave:
+    - Uno con el estado PD y los años PD (dict[int, tuple[int, int]]),
+    - otro con las tareas 2, 3 y 4 del sujeto (dict[int, dict[int, Task]]),
+    - y otro con las presiones por coordenada en cada trazo (dict[int, dict[int, list[list[int]]]]).
     """
 
     pahaw_file_path = os.path.join("PaHaW", "PaHaW_files", "corpus_PaHaW.xlsx")
     pahaw_data_frame = pandas.read_excel(pahaw_file_path)
     task_file_path_start = os.path.join("PaHaW", "PaHaW_public")
     task_file_path_end = "_1.svc"
+    
     subjects_id_list = list(map(int, pahaw_data_frame["ID"].to_list()))
     subjects_pd_status_list = [
         0 if e == "H" else 1 for e in pahaw_data_frame["Disease"].to_list()
@@ -428,6 +431,9 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
 
     subjects_pd_status_years_dict = {}
     subjects_tasks_dict = {}
+    subjects_pressure_dict = {}
+    subjects_altitude_dict = {}
+    
     subject_i = 0
     while subject_i < len(subjects_id_list):
         subject_id = subjects_id_list[subject_i]
@@ -435,7 +441,8 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
             subjects_pd_status_list[subject_i],
             subject_pd_years_list[subject_i],
         )
-        for task_number in range(2, 5):
+
+        for task_number in range(1, 9):
             task_file_path_mid = os.path.join(
                 f"{subject_id:05d}", f"{subject_id:05d}__{task_number}"
             )
@@ -443,28 +450,39 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                 task_file_path_start, task_file_path_mid + task_file_path_end
             )
             task_strokes_list = []
-            with open(task_file_path, encoding="utf-8") as task_file:
-                # Se salta la primera línea.
-                task_file.readline()
-                from_on_air = True
+            task_pressures_list = []
+            task_altitude_list = []
 
-                while True:
-                    line = task_file.readline()
-                    if not line:
-                        break
-                    # Si la coordenada está sobre el papel.
-                    if line.split()[3] == "1":
-                        coordinate = int(line.split()[1]), int(line.split()[0])
-                        if from_on_air:
-                            task_strokes_list.append(Stroke(coordinate))
-                            from_on_air = False
+            if os.path.exists(task_file_path):
+                with open(task_file_path, encoding="utf-8") as task_file:
+                    task_file.readline()  # Saltar cabecera
+                    from_on_air = True
+
+                    while True:
+                        line = task_file.readline()
+                        if not line:
+                            break
+                        if line.split()[3] == "1":
+                            coordinate = int(line.split()[1]), int(line.split()[0])
+                            pressure = int(line.split()[6])
+                            altitude = int(line.split()[5])
+                            if from_on_air:
+                                task_strokes_list.append(Stroke(coordinate))
+                                task_pressures_list.append([pressure])
+                                task_altitude_list.append([altitude])
+                                from_on_air = False
+                            else:
+                                task_strokes_list[-1].append(coordinate)
+                                task_pressures_list[-1].append(pressure)
+                                task_altitude_list[-1].append(altitude)
                         else:
-                            task_strokes_list[-1].append(coordinate)
-                    else:
-                        from_on_air = True
+                            from_on_air = True
+            else:
+                print(f"Archivo no encontrado: {task_file_path}, se omite.")
 
             subjects_pd_status_years_dict[subject_id] = pd_status_years
-            if task_number == 2:
+
+            if task_number == 1:
                 subjects_tasks_dict[subject_id] = {
                     task_number: Task(subject_id, task_number, task_strokes_list)
                 }
@@ -472,6 +490,17 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                 subjects_tasks_dict[subject_id][task_number] = Task(
                     subject_id, task_number, task_strokes_list
                 )
+
+            if subject_id not in subjects_pressure_dict:
+                subjects_pressure_dict[subject_id] = {}
+                subjects_altitude_dict[subject_id] = {}
+            subjects_pressure_dict[subject_id][task_number] = task_pressures_list
+            subjects_altitude_dict[subject_id][task_number] = task_altitude_list
+            #print(f"Long strokes: {len(task_strokes_list[-1])} | long pressures: {len(task_pressures_list[-1])}")
+
         subject_i += 1
 
-    return subjects_pd_status_years_dict, subjects_tasks_dict
+    return subjects_pd_status_years_dict, subjects_tasks_dict, subjects_pressure_dict, subjects_altitude_dict
+
+
+    
