@@ -6,21 +6,43 @@ import random
 import shutil
 import sys
 import matplotlib.pyplot as plt
+import numpy as np
+import cv2
 
 
-class Stroke(list):
+class Stroke(list[tuple[int, int, int, int, int]]):
     """Un trazo es una lista de coordenadas (x, y).
 
     Attributes:
         pd_predicted: int. 0 para H y 1 para PD.
     """
 
-    def __init__(self, initial_coordinate: tuple[int, int]):
+    def __init__(self, initial_coordinate: tuple[int, int, int, int, int]):
         super().__init__([initial_coordinate])
+        x, y, _, _, _ = initial_coordinate
+        self.min_x = self.max_x = x
+        self.min_y = self.max_y = y
         self.pd_predicted: int
 
-    def append(self, coordinate: tuple[int, int]):
+    def append(self, coordinate: tuple[int, int, int, int, int]):
+        x, y, _, _, _ = coordinate
+        self.min_x = min(self.min_x, x)
+        self.max_x = max(self.max_x, x)
+        self.min_y = min(self.min_y, y)
+        self.max_y = max(self.max_y, y)
         super().append(coordinate)
+
+    def getMinX(self):
+        return self.min_x
+    
+    def getMaxX(self):
+        return self.max_x
+    
+    def getMinY(self):
+        return self.min_y
+    
+    def getMaxY(self):
+        return self.max_y
 
     def set_pd_predicted(self, pd_predicted: int):
         self.pd_predicted = pd_predicted
@@ -34,6 +56,15 @@ class Stroke(list):
         """Devuelve la lista de coordenadas y del trazo."""
 
         return list(zip(*self))[1]
+    
+    def getAzimuths(self) -> list[int]:
+        return list(zip(*self))[2]
+    
+    def getAltitudes(self) -> list[int]:
+        return list(zip(*self))[3]
+    
+    def getPressures(self) -> list[int]:
+        return list(zip(*self))[4]
 
     def distance(self, stroke: "Stroke") -> int:
         """Devuelve la distancia a otro trazo."""
@@ -165,6 +196,39 @@ class LetterSet:
         self.predicted_h_length: int = 0
         self.predicted_pd_length: int = 0
         self.pd_predicted: int
+        self.min_x = float("inf")
+        self.max_x = float("-inf")
+        self.min_y = float("inf")
+        self.max_y = float("-inf")
+        for stroke in strokes_list:
+            self.min_x = min(self.min_x, stroke.getMinX())
+            self.max_x = max(self.max_x, stroke.getMaxX())
+            self.min_y = min(self.min_y, stroke.getMinY())
+            self.max_y = max(self.max_y, stroke.getMaxY())
+
+    def setMinX(self, min_x: int):
+        self.min_x = min_x
+
+    def setMaxX(self, max_x: int):
+        self.max_x = max_x
+
+    def setMinY(self, min_y: int):
+        self.min_y = min_y
+
+    def setMaxY(self, max_y: int):
+        self.max_y = max_y
+
+    def getMinX(self):
+        return self.min_x
+    
+    def getMaxX(self):
+        return self.max_x
+    
+    def getMinY(self):
+        return self.min_y
+    
+    def getMaxY(self):
+        return self.max_y
 
     def get_subject_id(self) -> int:
         """Devuelve la ID del sujeto al que pertenece el conjunto de letras."""
@@ -323,6 +387,10 @@ class Task:
     def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke]):
         self.subject_id = subject_id
         self.task_number = task_number
+        self.min_x = float("inf")
+        self.max_x = float("-inf")
+        self.min_y = float("inf")
+        self.max_y = float("-inf")
         self.letters_sets_list = self._get_letters_sets(strokes_list)
         self.predicted_h_length: int = 0
         self.predicted_pd_length: int = 0
@@ -386,13 +454,48 @@ class Task:
         letters_sets_list = []
         letters_set_i = 0
         while letters_set_i < len(sets_strokes_list):
+            new_letter_set = LetterSet(sets_strokes_list[letters_set_i], self, letters_set_i)
             letters_sets_list.append(
-                LetterSet(sets_strokes_list[letters_set_i], self, letters_set_i)
+                new_letter_set
             )
+            self.min_x = min(self.min_x, new_letter_set.getMinX())
+            self.max_x = max(self.max_x, new_letter_set.getMaxX())
+            self.min_y = min(self.min_y, new_letter_set.getMinY())
+            self.max_y = max(self.max_y, new_letter_set.getMaxY())
             letters_set_i += 1
 
         return letters_sets_list
+   
+    def plot_task(self, subject_id: int, margin: int = 30, min_thickness = 4, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
+        canvas = np.ones((int(self.max_y - self.min_y + margin), int(self.max_x - self.min_x + margin)),dtype=np.float64)*255.0
+        for letters_set in self.letters_sets_list:
+            for stroke in letters_set.strokes_list:
+                stroke_x_list = stroke.get_x_coordinates_list()
+                stroke_y_list = stroke.get_y_coordinates_list()
+                normalized_x = [x - self.min_x + (margin // 2) for x in stroke_x_list]
+                normalized_y = [y - self.min_y + (margin // 2) for y in stroke_y_list]
+                normalized_altitudes = normalize(stroke.getAltitudes())
+                normalized_pressures = normalize(stroke.getPressures())
+                for i in range(len(stroke_x_list) -1):
+                    darkening_factor = min_dark_factor + (max_dark_factor - min_dark_factor) * (1 - normalized_pressures[i])
+                    thickness_factor = min_thickness + (max_thickness - min_thickness) * (1 - normalized_altitudes[i])
+                    bresenham_line(
+                        normalized_x[i],
+                        normalized_y[i],
+                        normalized_x[i+1],
+                        normalized_y[i+1],
+                        canvas,
+                        thickness=int(thickness_factor),
+                        darkening_factor=darkening_factor
+                        )
+        output_path = os.path.join("tareas_generadas", f"sujeto{subject_id}")
+        filename = os.path.join(output_path, f"tarea{self.task_number}.png")
+        canvas = cv2.flip(canvas, 0)
+        canvas_uint8 = canvas.astype(np.uint8)
+        #canvas_resized = cv2.resize(canvas_uint8, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+        cv2.imwrite(filename, canvas_uint8)
 
+    
     def generate_prediction_results(self):
         """Genera las predicciones a nivel de trazo,
         de conjunto de letras y de tarea."""
@@ -435,7 +538,8 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
             subjects_pd_status_list[subject_i],
             subject_pd_years_list[subject_i],
         )
-        for task_number in range(2, 5):
+        os.makedirs(os.path.join("tareas_generadas", f"sujeto{subject_id}"), exist_ok=True)
+        for task_number in range(1, 9):
             task_file_path_mid = os.path.join(
                 f"{subject_id:05d}", f"{subject_id:05d}__{task_number}"
             )
@@ -443,35 +547,90 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                 task_file_path_start, task_file_path_mid + task_file_path_end
             )
             task_strokes_list = []
-            with open(task_file_path, encoding="utf-8") as task_file:
-                # Se salta la primera línea.
-                task_file.readline()
-                from_on_air = True
+            if os.path.exists(task_file_path):
+                with open(task_file_path, encoding="utf-8") as task_file:
+                    # Se salta la primera línea.
+                    task_file.readline()
+                    from_on_air = True
 
-                while True:
-                    line = task_file.readline()
-                    if not line:
-                        break
-                    # Si la coordenada está sobre el papel.
-                    if line.split()[3] == "1":
-                        coordinate = int(line.split()[1]), int(line.split()[0])
-                        if from_on_air:
-                            task_strokes_list.append(Stroke(coordinate))
-                            from_on_air = False
+                    while True:
+                        line = task_file.readline()
+                        if not line:
+                            break
+                        # Si la coordenada está sobre el papel.
+                        if line.split()[3] == "1":
+                            coordinate = int(line.split()[1]), int(line.split()[0]), int(line.split()[4]), int(line.split()[5]), int(line.split()[6])
+                            if from_on_air:
+                                task_strokes_list.append(Stroke(coordinate))
+                                from_on_air = False
+                            else:
+                                task_strokes_list[-1].append(coordinate)
                         else:
-                            task_strokes_list[-1].append(coordinate)
-                    else:
-                        from_on_air = True
+                            from_on_air = True
+            else:
+                print(f"Archivo no encontrado: {task_file_path}, se omite.")
 
             subjects_pd_status_years_dict[subject_id] = pd_status_years
-            if task_number == 2:
-                subjects_tasks_dict[subject_id] = {
-                    task_number: Task(subject_id, task_number, task_strokes_list)
-                }
+            if task_strokes_list:  # Solo si hay trazos
+                new_task = Task(subject_id, task_number, task_strokes_list)
+
+                if subject_id not in subjects_tasks_dict:
+                    subjects_tasks_dict[subject_id] = {}
+
+                subjects_tasks_dict[subject_id][task_number] = new_task
+                new_task.plot_task(subject_id=subject_id)
             else:
-                subjects_tasks_dict[subject_id][task_number] = Task(
-                    subject_id, task_number, task_strokes_list
-                )
+                print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
+        break
         subject_i += 1
 
     return subjects_pd_status_years_dict, subjects_tasks_dict
+
+def bresenham_line(x1, y1, x2, y2, matrix, thickness=1, darkening_factor=0.5):
+    dx = abs(x2 - x1)
+    dy = abs(y2 - y1)
+    x, y = x1, y1
+    sx = 1 if x2 > x1 else -1
+    sy = 1 if y2 > y1 else -1
+    half = thickness // 2
+
+    def darken_pixel_block(x, y):
+        y_start = max(0, y - half)
+        y_end = min(matrix.shape[0], y + half + 1)
+        x_start = max(0, x - half)
+        x_end = min(matrix.shape[1], x + half + 1)
+    
+        for yy in range(y_start, y_end):
+            for xx in range(x_start, x_end):
+                if (xx - x)**2 + (yy - y)**2 <= half**2:
+                    matrix[yy, xx] *= darkening_factor
+
+    if dx > dy:
+        err = dx / 2.0
+        while x != x2:
+            darken_pixel_block(x, y)
+            err -= dy
+            if err < 0:
+                y += sy
+                err += dx
+            x += sx
+    else:
+        err = dy / 2.0
+        while y != y2:
+            darken_pixel_block(x, y)
+            err -= dx
+            if err < 0:
+                x += sx
+                err += dy
+            y += sy
+
+    darken_pixel_block(x2, y2)
+    return matrix
+
+    
+def normalize(values: list[int], fallback: float = 0.5) -> list[int]:
+        min_v, max_v = min(values), max(values)
+        if max_v - min_v == 0:
+            return [fallback] * len(values)
+        return [(v - min_v) / (max_v - min_v) for v in values]
+ 
