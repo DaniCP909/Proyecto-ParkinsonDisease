@@ -395,6 +395,19 @@ class Task:
         self.predicted_h_length: int = 0
         self.predicted_pd_length: int = 0
         self.pd_predicted: int
+        self.image = None
+
+    def getHeight(self):
+        return self.max_y - self.min_y
+    
+    def getWidth(self):
+        return self.max_x - self.min_x
+
+    def getImage(self):
+        return self.image
+
+    def setImage(self, img):
+        self.image = img
 
     def _get_letters_sets(self, strokes_list: list[Stroke]) -> list[LetterSet]:
         """Recibe una lista de trazos y los agrupa en varios conjuntos de letras."""
@@ -466,14 +479,14 @@ class Task:
 
         return letters_sets_list
    
-    def plot_task(self, subject_id: int, margin: int = 30, min_thickness = 4, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
-        canvas = np.ones((int(self.max_y - self.min_y + margin), int(self.max_x - self.min_x + margin)),dtype=np.float64)*255.0
+    def plot_task(self, subject_id: int, min_thickness = 4, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
+        canvas = np.ones((int(self.max_y - self.min_y), int(self.max_x - self.min_x)),dtype=np.float64)*255.0
         for letters_set in self.letters_sets_list:
             for stroke in letters_set.strokes_list:
                 stroke_x_list = stroke.get_x_coordinates_list()
                 stroke_y_list = stroke.get_y_coordinates_list()
-                normalized_x = [x - self.min_x + (margin // 2) for x in stroke_x_list]
-                normalized_y = [y - self.min_y + (margin // 2) for y in stroke_y_list]
+                normalized_x = [x - self.min_x for x in stroke_x_list]
+                normalized_y = [y - self.min_y for y in stroke_y_list]
                 normalized_altitudes = normalize(stroke.getAltitudes())
                 normalized_pressures = normalize(stroke.getPressures())
                 for i in range(len(stroke_x_list) -1):
@@ -492,8 +505,10 @@ class Task:
         filename = os.path.join(output_path, f"tarea{self.task_number}.png")
         canvas = cv2.flip(canvas, 0)
         canvas_uint8 = canvas.astype(np.uint8)
+        negative_img = 255 - canvas_uint8
         #canvas_resized = cv2.resize(canvas_uint8, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-        cv2.imwrite(filename, canvas_uint8)
+        #cv2.imwrite(filename, canvas_uint8)
+        self.setImage(negative_img)
 
     
     def generate_prediction_results(self):
@@ -581,7 +596,6 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                 new_task.plot_task(subject_id=subject_id)
             else:
                 print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
-        break
         subject_i += 1
 
     return subjects_pd_status_years_dict, subjects_tasks_dict
