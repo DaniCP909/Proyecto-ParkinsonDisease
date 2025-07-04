@@ -180,7 +180,7 @@ def main():
     performance_fig = plt.figure()
     plt.plot(train_counter, train_losses, color='green', zorder=3)
     plt.scatter(validate_counter, validate_losses, color='purple', zorder=2)
-    plt.legend(['Train loss', 'Validate loss'], loc='upper rigth')
+    plt.legend(['Train loss', 'Validate loss'], loc='upper right')
     plt.xlabel('number of training samples seen')
     plt.ylabel('negative log likelihood loss')
     performance_fig.savefig(f"results/performance.png")
