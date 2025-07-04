@@ -156,7 +156,7 @@ def main():
     
     accuracy_history = []
 
-    model = OfflineCnnLstm()
+    model = OfflineCnnLstm().to(device)
 
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
