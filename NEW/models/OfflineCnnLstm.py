@@ -37,7 +37,7 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.cross_entropy(output, target, reduction='sum')
+        loss = F.cross_entropy(output, target, reduction='mean')
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
@@ -62,7 +62,7 @@ def validate(model, device, validate_loader, validate_losses):
         for data, target in validate_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            validate_loss += F.cross_entropy(output, target, reduction='sum').item()
+            validate_loss += F.cross_entropy(output, target, reduction='mean').item()
             pred = output.argmax(dim=1, keepdim=True)  # get index of max log-probability
 
             all_predictions.extend(pred.view(-1).cpu().numpy())

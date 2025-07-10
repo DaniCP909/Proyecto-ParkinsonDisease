@@ -12,12 +12,17 @@ import random
 import argparse
 import torch
 import torch.optim as optim
+import torchvision
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 from collections import Counter
 
 from PahawOfflineSimDataset import PahawOfflineSimDataset
 from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
+
+from torch.utils.tensorboard import SummaryWriter
+
+from time import time
 
 
 def main():
@@ -36,6 +41,7 @@ def main():
     parser.add_argument('--save-model', action='store_true', default=False, help='Saves current Model')
 
     args = parser.parse_args()
+    writer = SummaryWriter("runs/pd-detection")
 
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     use_mps = not args.no_mps and torch.backends.mps.is_available()
@@ -68,6 +74,8 @@ def main():
 
     print(f"Device: {device}")
 
+    t0_load_data = time()
+
     subjects_pd_status_years, subjects_tasks = pahaw_loader.load()
 
     h_id_list = []
@@ -92,6 +100,9 @@ def main():
 
     train_id_set = set(train_id_list)
     validate_id_set = set(validate_id_list)
+
+    elapsed_load_data = time() - t0_load_data
+    print(f"PaHaW data loaded and patches generated in {(elapsed_load_data):.2f}s")
 
     validate_data_label_img = []
     train_data_label_img = []
@@ -120,34 +131,12 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_pahaw_offline_dataset, **train_kwargs)
     validate_loader = torch.utils.data.DataLoader(validate_pahaw_offline_dataset, **validate_kargs)
 
-    print(f"Train dataset size: {len(train_loader.dataset)}")
-    print(f"Validate dataset size: {len(validate_loader.dataset)}")
-    print(f"Train classes: {Counter([item[1] for item in train_data_label_img])}")
-    print(f"Validate classes: {Counter([item[1] for item in validate_data_label_img])}")
-    print("=== DATASET ANALYSIS ===")
-    print(f"Total subjects: {len(subjects_ids)}")
-    print(f"Healthy subjects: {len(h_id_list)}")
-    print(f"PD subjects: {len(pd_id_list)}")
-    print(f"Train subjects: {len(train_id_list)}")
-    print(f"Validate subjects: {len(validate_id_list)}")
-    
-    print(f"\nTrain samples: {len(train_data_label_img)}")
-    print(f"Validate samples: {len(validate_data_label_img)}")
-    
-    train_labels = [item[1] for item in train_data_label_img]
-    validate_labels = [item[1] for item in validate_data_label_img]
-    
-    print(f"Train classes distribution: {Counter(train_labels)}")
-    print(f"Validate classes distribution: {Counter(validate_labels)}")
-    
-    # Verificar que no hay overlapping entre train y validate
-    print(f"Train/Validate subject overlap: {len(train_id_set.intersection(validate_id_set))}")
-    
-    print("=== ARGS VERIFICATION ===")
-    print(f"Epochs: {args.epochs}")
-    print(f"Batch size: {args.batch_size}")
-    print(f"Learning rate: {args.lr}")
-    print(f"Device: {device}")
+
+    examples = iter(validate_loader)
+    example_data, example_target = next(examples)
+    img_grid = torchvision.utils.make_grid(example_data[0])
+    writer.add_image(f"PD task GT: {example_target}", img_grid)
+    writer.close()
 
     train_losses = []
     train_counter = []
@@ -162,6 +151,11 @@ def main():
 
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
+    writer.add_graph(model, example_data.to(device))
+    writer.close()
+
+    t0_train = time()
+
     # Evaluate model before any training (t=0) to get baseline metrics
     predictions, targets, accuracy = validate(model, device, validate_loader, validate_losses)
     accuracy_history.append(accuracy)
@@ -174,7 +168,13 @@ def main():
         accuracy_history.append(accuracy)
         validate_counter.append(epoch * len(train_loader.dataset))
 
+        writer.add_scalar("training loss", validate_losses[-1], epoch)
+        writer.add_scalar("Accuracy", accuracy, epoch)
+
         scheduler.step()
+
+    elapsed_train = time() - t0_train
+    print(f"Model traine in {(elapsed_train):.2f}s")
 
     #Plot results
     performance_fig = plt.figure()
