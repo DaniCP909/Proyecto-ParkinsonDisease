@@ -479,7 +479,7 @@ class Task:
 
         return letters_sets_list
    
-    def plot_task(self, subject_id: int, min_thickness = 4, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
+    def plot_task(self, subject_id: int, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
         canvas = np.ones((int(self.max_y - self.min_y), int(self.max_x - self.min_x)),dtype=np.float64)*255.0
         for letters_set in self.letters_sets_list:
             for stroke in letters_set.strokes_list:

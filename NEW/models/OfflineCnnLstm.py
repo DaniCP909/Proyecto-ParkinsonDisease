@@ -7,15 +7,15 @@ class OfflineCnnLstm(nn.Module):
         super().__init__()
 
         self.cnn = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=5, stride=2),
+            nn.Conv2d(1, 128, kernel_size=5, stride=2),
             nn.ReLU(),
             nn.MaxPool2d(2),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2),
+            nn.Conv2d(128, 256, kernel_size=5, stride=2),
             nn.ReLU(),
-            nn.AdaptiveAvgPool2d((3, 3)),
+            nn.AdaptiveAvgPool2d((5, 5)),
         )
 
-        self.cnn_proj = nn.Linear(32 * 3 * 3, feature_dim)
+        self.cnn_proj = nn.Linear(256 * 5 * 5, feature_dim)
         self.feature_dim = feature_dim 
 
         self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=lstm_hidden, batch_first=True)

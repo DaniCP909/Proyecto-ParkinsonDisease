@@ -3,9 +3,9 @@ import math
 import cv2
 
 def fit_into_normalized_canvas(img, max_h, max_w):
-    final_w = round_up_to(max_w, 50)
-    final_h = round_up_to(max_h, 16)
-    canvas = np.zeros((final_h, final_w),dtype=np.float64)*255.0
+    final_w = int(round_up_to(max_w, 50) * .5)
+    final_h = int(round_up_to(max_h, 16) * .5)
+    canvas = np.zeros((final_h, final_w),dtype=np.float64)
     img_h, img_w = img.shape
 
     h_ratio = final_h / img_h
