@@ -19,13 +19,13 @@ class Stroke(list[tuple[int, int, int, int, int]]):
 
     def __init__(self, initial_coordinate: tuple[int, int, int, int, int]):
         super().__init__([initial_coordinate])
-        x, y, _, _, _ = initial_coordinate
+        x, y, _, _, _, _, _= initial_coordinate
         self.min_x = self.max_x = x
         self.min_y = self.max_y = y
         self.pd_predicted: int
 
     def append(self, coordinate: tuple[int, int, int, int, int]):
-        x, y, _, _, _ = coordinate
+        x, y, _, _, _, _, _ = coordinate
         self.min_x = min(self.min_x, x)
         self.max_x = max(self.max_x, x)
         self.min_y = min(self.min_y, y)
@@ -384,30 +384,52 @@ class Task:
         pd_predicted: int. 0 para H y 1 para PD.
     """
 
-    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke]):
+    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke], all_coords: list[tuple[int, int, int, int, int, int, int]]):
         self.subject_id = subject_id
         self.task_number = task_number
-        self.min_x = float("inf")
-        self.max_x = float("-inf")
-        self.min_y = float("inf")
-        self.max_y = float("-inf")
-        self.letters_sets_list = self._get_letters_sets(strokes_list)
+        self.min_vals = {
+            'x_surface': float('inf'),
+            'y_surface': float('inf'),
+            'x_all': float('inf'),
+            'y_all': float('inf'),
+            'timestamp': float('inf'),
+            'pressure': float('inf'),
+            'altitude': float('inf'),
+            'azimuth': float('inf'),
+        }
+        self.max_vals = {
+            'x_surface': float('-inf'),
+            'y_surface': float('-inf'),
+            'x_all': float('-inf'),
+            'y_all': float('-inf'),
+            'timestamp': float('-inf'),
+            'pressure': float('-inf'),
+            'altitude': float('-inf'),
+            'azimuth': float('-inf'),
+        }
+        self.all_coords = all_coords #List with all coords (in air and on surface)
+        self.letters_sets_list = self._get_letters_sets(strokes_list) #Generate letters sets and compute min/max (only on surface coords)
+        self._compute_bounds() #Compute bounds of all coords and its data
+        self.all_coords = self._normalize_coords_data() #normalize all coords and its data
         self.predicted_h_length: int = 0
         self.predicted_pd_length: int = 0
         self.pd_predicted: int
         self.image = None
 
     def getHeight(self):
-        return self.max_y - self.min_y
+        return self.min_vals['y_surface'] - self.max_vals['y_surface']
     
     def getWidth(self):
-        return self.max_x - self.min_x
+        return self.min_vals['x_surface'] - self.max_vals['x_surface']
 
     def getImage(self):
         return self.image
 
     def setImage(self, img):
         self.image = img
+
+    def getAllCordinates(self):
+        return np.array(self.all_coords, dtype=np.float32)
 
     def _get_letters_sets(self, strokes_list: list[Stroke]) -> list[LetterSet]:
         """Recibe una lista de trazos y los agrupa en varios conjuntos de letras."""
@@ -471,13 +493,58 @@ class Task:
             letters_sets_list.append(
                 new_letter_set
             )
-            self.min_x = min(self.min_x, new_letter_set.getMinX())
-            self.max_x = max(self.max_x, new_letter_set.getMaxX())
-            self.min_y = min(self.min_y, new_letter_set.getMinY())
-            self.max_y = max(self.max_y, new_letter_set.getMaxY())
+            self.min_vals['x_surface'] = min(self.min_vals['x_surface'], new_letter_set.getMinX())
+            self.max_vals['x_surface'] = max(self.max_vals['x_surface'], new_letter_set.getMaxX())
+            self.min_vals['y_surface'] = min(self.min_vals['y_surface'], new_letter_set.getMinY())
+            self.max_vals['y_surface'] = max(self.max_vals['y_surface'], new_letter_set.getMaxY())
             letters_set_i += 1
 
         return letters_sets_list
+    
+    def _compute_bounds(self):
+        for coord in self. all_coords:
+            x, y, timestamp, _, azimuth, altitude, pressure = coord
+            self.min_vals['x_all'] = min(self.min_vals['x_all'], x)
+            self.max_vals['x_all'] = max(self.max_vals['x_all'], x)
+            self.min_vals['y_all'] = min(self.min_vals['y_all'], y)
+            self.max_vals['y_all'] = max(self.max_vals['y_all'], y)
+            self.min_vals['timestamp'] = min(self.min_vals['timestamp'], timestamp)
+            self.max_vals['timestamp'] = max(self.max_vals['timestamp'], timestamp)
+            self.min_vals['azimuth'] = min(self.min_vals['azimuth'], azimuth)
+            self.max_vals['azimuth'] = max(self.max_vals['azimuth'], azimuth)
+            self.min_vals['altitude'] = min(self.min_vals['altitude'], altitude)
+            self.max_vals['altitude'] = max(self.max_vals['altitude'], altitude)
+            self.min_vals['pressure'] = min(self.min_vals['pressure'], pressure)
+            self.max_vals['pressure'] = max(self.max_vals['pressure'], pressure)
+
+    def _normalize_coords_data(self) -> list[tuple[float, float, float, float, float, float, float]]:
+        norm_coords = []
+
+        def norm(val, min_val, max_val):
+            return (val - min_val) / (max_val - min_val) if max_val > min_val else 0.0
+        
+        for coord in self.all_coords:
+            x, y, timestamp, button_state, azimuth, altitude, pressure = coord
+
+            norm_x = norm(x, self.min_vals['x_all'], self.max_vals['x_all'])
+            norm_y = norm(y, self.min_vals['y_all'], self.max_vals['y_all'])
+            norm_timestamp = norm(timestamp, self.min_vals['timestamp'], self.max_vals['timestamp'])
+            norm_button_state = float(button_state)
+            norm_azimuth = norm(azimuth, self.min_vals['azimuth'], self.max_vals['azimuth'])
+            norm_altitude = norm(altitude, self.min_vals['altitude'], self.max_vals['altitude'])
+            norm_pressure = norm(pressure, self.min_vals['pressure'], self.max_vals['pressure'])
+
+            norm_coords.append((
+                norm_x,
+                norm_y,
+                norm_timestamp,
+                norm_button_state,
+                norm_azimuth,
+                norm_altitude,
+                norm_pressure
+            ))
+        return norm_coords
+
    
     def plot_task(self, subject_id: int, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
         canvas = np.ones((int(self.max_y - self.min_y), int(self.max_x - self.min_x)),dtype=np.float64)*255.0
@@ -562,6 +629,7 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                 task_file_path_start, task_file_path_mid + task_file_path_end
             )
             task_strokes_list = []
+            all_coords = []
             if os.path.exists(task_file_path):
                 with open(task_file_path, encoding="utf-8") as task_file:
                     # Se salta la primera línea.
@@ -572,9 +640,18 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                         line = task_file.readline()
                         if not line:
                             break
+                        coordinate = (
+                            int(line.split()[1]),
+                            int(line.split()[0]),
+                            int(line.split()[2]),
+                            int(line.split()[3]),
+                            int(line.split()[4]),
+                            int(line.split()[5]),
+                            int(line.split()[6]),
+                        )
+                        all_coords.append(coordinate)
                         # Si la coordenada está sobre el papel.
                         if line.split()[3] == "1":
-                            coordinate = int(line.split()[1]), int(line.split()[0]), int(line.split()[4]), int(line.split()[5]), int(line.split()[6])
                             if from_on_air:
                                 task_strokes_list.append(Stroke(coordinate))
                                 from_on_air = False
@@ -587,13 +664,13 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
 
             subjects_pd_status_years_dict[subject_id] = pd_status_years
             if task_strokes_list:  # Solo si hay trazos
-                new_task = Task(subject_id, task_number, task_strokes_list)
+                new_task = Task(subject_id, task_number, task_strokes_list, all_coords)
 
                 if subject_id not in subjects_tasks_dict:
                     subjects_tasks_dict[subject_id] = {}
 
                 subjects_tasks_dict[subject_id][task_number] = new_task
-                new_task.plot_task(subject_id=subject_id)
+                #new_task.plot_task(subject_id=subject_id)
             else:
                 print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
         subject_i += 1
