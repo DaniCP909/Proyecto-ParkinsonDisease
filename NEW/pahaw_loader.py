@@ -417,10 +417,10 @@ class Task:
         self.image = None
 
     def getHeight(self):
-        return self.min_vals['y_surface'] - self.max_vals['y_surface']
+        return self.max_vals['y_surface'] - self.min_vals['y_surface']
     
     def getWidth(self):
-        return self.min_vals['x_surface'] - self.max_vals['x_surface']
+        return self.max_vals['x_surface'] - self.min_vals['x_surface']
 
     def getImage(self):
         return self.image
@@ -547,13 +547,13 @@ class Task:
 
    
     def plot_task(self, subject_id: int, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
-        canvas = np.ones((int(self.max_y - self.min_y), int(self.max_x - self.min_x)),dtype=np.float64)*255.0
+        canvas = np.ones((int(self.max_vals['y_surface'] - self.min_vals['y_surface']), int(self.max_vals['x_surface'] - self.min_vals['x_surface'])),dtype=np.float64)*255.0
         for letters_set in self.letters_sets_list:
             for stroke in letters_set.strokes_list:
                 stroke_x_list = stroke.get_x_coordinates_list()
                 stroke_y_list = stroke.get_y_coordinates_list()
-                normalized_x = [x - self.min_x for x in stroke_x_list]
-                normalized_y = [y - self.min_y for y in stroke_y_list]
+                normalized_x = [x - self.min_vals['x_surface'] for x in stroke_x_list]
+                normalized_y = [y - self.min_vals['y_surface'] for y in stroke_y_list]
                 normalized_altitudes = normalize(stroke.getAltitudes())
                 normalized_pressures = normalize(stroke.getPressures())
                 for i in range(len(stroke_x_list) -1):
@@ -670,7 +670,7 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                     subjects_tasks_dict[subject_id] = {}
 
                 subjects_tasks_dict[subject_id][task_number] = new_task
-                #new_task.plot_task(subject_id=subject_id)
+                new_task.plot_task(subject_id=subject_id)
             else:
                 print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
         subject_i += 1
