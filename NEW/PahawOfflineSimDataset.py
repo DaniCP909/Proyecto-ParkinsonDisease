@@ -1,7 +1,8 @@
 import torch
 import numpy as np
 from torch.utils.data import Dataset
-from CustomMorphOps import fit_into_normalized_canvas
+from utils.CustomMorphOps import fit_into_normalized_canvas
+from utils.PatchesOps import patches_per_image, patch_generator
 
 class PahawOfflineSimDataset(Dataset):
 
@@ -24,7 +25,7 @@ class PahawOfflineSimDataset(Dataset):
 
     def __getitem__(self, idx):
         image = self.tasks[idx].getImage()
-        labels = self.labels[idx]
+        label = self.labels[idx]
 
         if self.transform:
             image = self.transform(image)
@@ -37,18 +38,5 @@ class PahawOfflineSimDataset(Dataset):
                                   patch_width=self.patch_w,
                                   stepsize=self.setpsize)
         patches_tensor = torch.tensor(np.stack(patches), dtype=torch.float32).unsqueeze(1)
-        return patches_tensor, labels
+        return patches_tensor, label
 
-
-def patches_per_image(image_width, patch_width=10, stepsize=2):
-    return int((image_width - patch_width)/stepsize + 1)
-
-def patch_generator(image, device, n_patches=1, patch_height=48, patch_width=10, stepsize=2):
-    
-    H, W = image.shape
-    patches = []
-    for p in range(n_patches):
-        start_x = p * stepsize
-        patch = image[:, start_x: start_x + patch_width]
-        patches.append(patch)
-    return patches

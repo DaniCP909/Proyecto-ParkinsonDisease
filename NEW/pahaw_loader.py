@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
+from utils.CustomMorphOps import bresenham_line, normalize
+
 
 class Stroke(list[tuple[int, int, int, int, int]]):
     """Un trazo es una lista de coordenadas (x, y).
@@ -57,14 +59,20 @@ class Stroke(list[tuple[int, int, int, int, int]]):
 
         return list(zip(*self))[1]
     
-    def getAzimuths(self) -> list[int]:
+    def getTimestamps(self):
         return list(zip(*self))[2]
     
-    def getAltitudes(self) -> list[int]:
+    def getButtonState(self):
         return list(zip(*self))[3]
     
-    def getPressures(self) -> list[int]:
+    def getAzimuths(self) -> list[int]:
         return list(zip(*self))[4]
+    
+    def getAltitudes(self) -> list[int]:
+        return list(zip(*self))[5]
+    
+    def getPressures(self) -> list[int]:
+        return list(zip(*self))[6]
 
     def distance(self, stroke: "Stroke") -> int:
         """Devuelve la distancia a otro trazo."""
@@ -414,7 +422,7 @@ class Task:
         self.predicted_h_length: int = 0
         self.predicted_pd_length: int = 0
         self.pd_predicted: int
-        self.image = None
+        self.canvases = None
 
     def getHeight(self):
         return self.max_vals['y_surface'] - self.min_vals['y_surface']
@@ -422,11 +430,11 @@ class Task:
     def getWidth(self):
         return self.max_vals['x_surface'] - self.min_vals['x_surface']
 
-    def getImage(self):
-        return self.image
+    def getCanavases(self):
+        return self.canvases
 
-    def setImage(self, img):
-        self.image = img
+    def setCanvases(self, canvases):
+        self.canvases = canvases
 
     def getAllCordinates(self):
         return np.array(self.all_coords, dtype=np.float32)
@@ -546,36 +554,54 @@ class Task:
         return norm_coords
 
    
-    def plot_task(self, subject_id: int, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
-        canvas = np.ones((int(self.max_vals['y_surface'] - self.min_vals['y_surface']), int(self.max_vals['x_surface'] - self.min_vals['x_surface'])),dtype=np.float64)*255.0
+    def plot_task(self, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
+        final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
+        final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
+        canvases = {
+            name: (
+                np.ones((final_h, final_w), dtype=np.float64) * 255.0 if name == 'stroke'
+                else np.zeros((final_h, final_w), dtype=np.float64)
+            )
+            for name in ['stroke', 'timestamp', 'azimuth', 'altitude', 'pressure']
+        }
         for letters_set in self.letters_sets_list:
             for stroke in letters_set.strokes_list:
                 stroke_x_list = stroke.get_x_coordinates_list()
                 stroke_y_list = stroke.get_y_coordinates_list()
                 normalized_x = [x - self.min_vals['x_surface'] for x in stroke_x_list]
                 normalized_y = [y - self.min_vals['y_surface'] for y in stroke_y_list]
-                normalized_altitudes = normalize(stroke.getAltitudes())
-                normalized_pressures = normalize(stroke.getPressures())
+                normalized_timestamp = stroke.getTimestamps()
+                normalized_azimuths = stroke.getAzimuths()
+                normalized_altitudes = stroke.getAltitudes()
+                normalized_pressures = stroke.getPressures()
                 for i in range(len(stroke_x_list) -1):
                     darkening_factor = min_dark_factor + (max_dark_factor - min_dark_factor) * (1 - normalized_pressures[i])
                     thickness_factor = min_thickness + (max_thickness - min_thickness) * (1 - normalized_altitudes[i])
-                    bresenham_line(
+                    pixels = bresenham_line(
                         normalized_x[i],
                         normalized_y[i],
                         normalized_x[i+1],
                         normalized_y[i+1],
-                        canvas,
+                        height=final_h,
+                        width=final_w,
                         thickness=int(thickness_factor),
-                        darkening_factor=darkening_factor
                         )
-        output_path = os.path.join("tareas_generadas", f"sujeto{subject_id}")
+                    for y, x in pixels:
+                        canvases['stroke'][y, x] *= darkening_factor
+                        canvases['timestamp'][y, x] = normalized_timestamp[i]
+                        canvases['azimuth'][y, x] = normalized_azimuths[i]
+                        canvases['altitude'][y, x] = normalized_altitudes[i]
+                        canvases['pressure'][y, x] = normalized_pressures[i]
+
+        output_path = os.path.join("tareas_generadas", f"sujeto{self.subject_id}")
         filename = os.path.join(output_path, f"tarea{self.task_number}.png")
-        canvas = cv2.flip(canvas, 0)
-        canvas_uint8 = canvas.astype(np.uint8)
-        negative_img = 255 - canvas_uint8
+        stroke_canvas = canvases['stroke']
+        stroke_canvas = cv2.flip(stroke_canvas, 0)
+        stroke_canvas_uint8 = stroke_canvas.astype(np.uint8)
+        negative_img = 255 - stroke_canvas_uint8
         #canvas_resized = cv2.resize(canvas_uint8, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
         #cv2.imwrite(filename, canvas_uint8)
-        self.setImage(negative_img)
+        self.setCanvases(canvases)
 
     
     def generate_prediction_results(self):
@@ -670,58 +696,11 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                     subjects_tasks_dict[subject_id] = {}
 
                 subjects_tasks_dict[subject_id][task_number] = new_task
-                new_task.plot_task(subject_id=subject_id)
+                new_task.plot_task()
             else:
                 print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
         subject_i += 1
 
     return subjects_pd_status_years_dict, subjects_tasks_dict
 
-def bresenham_line(x1, y1, x2, y2, matrix, thickness=1, darkening_factor=0.5):
-    dx = abs(x2 - x1)
-    dy = abs(y2 - y1)
-    x, y = x1, y1
-    sx = 1 if x2 > x1 else -1
-    sy = 1 if y2 > y1 else -1
-    half = thickness // 2
-
-    def darken_pixel_block(x, y):
-        y_start = max(0, y - half)
-        y_end = min(matrix.shape[0], y + half + 1)
-        x_start = max(0, x - half)
-        x_end = min(matrix.shape[1], x + half + 1)
-    
-        for yy in range(y_start, y_end):
-            for xx in range(x_start, x_end):
-                if (xx - x)**2 + (yy - y)**2 <= half**2:
-                    matrix[yy, xx] *= darkening_factor
-
-    if dx > dy:
-        err = dx / 2.0
-        while x != x2:
-            darken_pixel_block(x, y)
-            err -= dy
-            if err < 0:
-                y += sy
-                err += dx
-            x += sx
-    else:
-        err = dy / 2.0
-        while y != y2:
-            darken_pixel_block(x, y)
-            err -= dx
-            if err < 0:
-                x += sx
-                err += dy
-            y += sy
-
-    darken_pixel_block(x2, y2)
-    return matrix
-
-    
-def normalize(values: list[int], fallback: float = 0.5) -> list[int]:
-        min_v, max_v = min(values), max(values)
-        if max_v - min_v == 0:
-            return [fallback] * len(values)
-        return [(v - min_v) / (max_v - min_v) for v in values]
  
