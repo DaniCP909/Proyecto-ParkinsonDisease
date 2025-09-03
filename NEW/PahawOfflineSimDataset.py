@@ -24,7 +24,7 @@ class PahawOfflineSimDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        image = self.tasks[idx].getImage()
+        image = self.tasks[idx].getCanvases()['stroke']
         label = self.labels[idx]
 
         if self.transform:

@@ -35,15 +35,15 @@ def bresenham_line(x1, y1, x2, y2, height, width, thickness=1):
     x, y = x1, y1
     sx = 1 if x2 > x1 else -1
     sy = 1 if y2 > y1 else -1
-    half = thickness // 2
+    half = max(1.0, thickness / 2.0)
 
     pixel_coords = []
 
     def collect_pixel_block(cx, cy):
-        y_start = max(0, cy - half)
-        y_end = min(height, cy + half + 1)
-        x_start = max(0, cx - half)
-        x_end = min(width, cx + half + 1)
+        y_start = max(0, math.floor(cy - half))
+        y_end   = min(height, math.ceil(cy + half + 1))
+        x_start = max(0, math.floor(cx - half))
+        x_end   = min(width, math.ceil(cx + half + 1))
 
         for yy in range(y_start, y_end):
             for xx in range(x_start, x_end):

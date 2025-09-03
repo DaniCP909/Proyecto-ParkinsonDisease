@@ -430,7 +430,7 @@ class Task:
     def getWidth(self):
         return self.max_vals['x_surface'] - self.min_vals['x_surface']
 
-    def getCanavases(self):
+    def getCanvases(self):
         return self.canvases
 
     def setCanvases(self, canvases):
@@ -587,7 +587,7 @@ class Task:
                         thickness=int(thickness_factor),
                         )
                     for y, x in pixels:
-                        canvases['stroke'][y, x] *= darkening_factor
+                        canvases['stroke'][y, x] = 0
                         canvases['timestamp'][y, x] = normalized_timestamp[i]
                         canvases['azimuth'][y, x] = normalized_azimuths[i]
                         canvases['altitude'][y, x] = normalized_altitudes[i]
@@ -599,8 +599,9 @@ class Task:
         stroke_canvas = cv2.flip(stroke_canvas, 0)
         stroke_canvas_uint8 = stroke_canvas.astype(np.uint8)
         negative_img = 255 - stroke_canvas_uint8
+        canvases['stroke'] = negative_img
         #canvas_resized = cv2.resize(canvas_uint8, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-        #cv2.imwrite(filename, canvas_uint8)
+        cv2.imwrite(filename, canvases['stroke'])
         self.setCanvases(canvases)
 
     
