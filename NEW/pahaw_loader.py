@@ -572,8 +572,10 @@ class Task:
                 normalized_y = [y - self.min_vals['y_surface'] for y in stroke_y_list]
                 normalized_timestamp = stroke.getTimestamps()
                 normalized_azimuths = stroke.getAzimuths()
-                normalized_altitudes = stroke.getAltitudes()
-                normalized_pressures = stroke.getPressures()
+                altitudes = stroke.getAltitudes()
+                normalized_altitudes = normalize(altitudes)
+                pressures = stroke.getPressures()
+                normalized_pressures = normalize(pressures)
                 for i in range(len(stroke_x_list) -1):
                     darkening_factor = min_dark_factor + (max_dark_factor - min_dark_factor) * (1 - normalized_pressures[i])
                     thickness_factor = min_thickness + (max_thickness - min_thickness) * (1 - normalized_altitudes[i])
@@ -587,7 +589,7 @@ class Task:
                         thickness=int(thickness_factor),
                         )
                     for y, x in pixels:
-                        canvases['stroke'][y, x] = 0
+                        canvases['stroke'][y, x] *= darkening_factor
                         canvases['timestamp'][y, x] = normalized_timestamp[i]
                         canvases['azimuth'][y, x] = normalized_azimuths[i]
                         canvases['altitude'][y, x] = normalized_altitudes[i]
@@ -599,9 +601,10 @@ class Task:
         stroke_canvas = cv2.flip(stroke_canvas, 0)
         stroke_canvas_uint8 = stroke_canvas.astype(np.uint8)
         negative_img = 255 - stroke_canvas_uint8
-        canvases['stroke'] = negative_img
+        canvases['stroke'] = (255 - stroke_canvas) / 255.0
         #canvas_resized = cv2.resize(canvas_uint8, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-        cv2.imwrite(filename, canvases['stroke'])
+        png_img = (canvases['stroke'] * 255).astype(np.uint8)
+        cv2.imwrite(filename, png_img)
         self.setCanvases(canvases)
 
     

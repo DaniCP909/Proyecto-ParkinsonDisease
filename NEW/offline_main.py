@@ -15,6 +15,7 @@ import torch.optim as optim
 import torchvision
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
+from torchvision.utils import save_image
 from collections import Counter
 
 from PahawOfflineSimDataset import PahawOfflineSimDataset
@@ -23,6 +24,7 @@ from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
 from torch.utils.tensorboard import SummaryWriter
 
 from time import time
+
 
 
 def main():
@@ -137,6 +139,7 @@ def main():
     img_grid = torchvision.utils.make_grid(example_data[0])
     writer.add_image(f"PD task GT: {example_target}", img_grid)
     writer.close()
+    save_image(example_data[0], "debug_example.png")  # se guarda en /raiz/NEW/debug_example.png
 
     train_losses = []
     train_counter = []

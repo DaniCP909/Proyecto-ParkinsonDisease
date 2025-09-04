@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: offline_main",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/NEW/offline_main.py",
+            "cwd": "${workspaceFolder}/NEW",
+            "console": "internalConsole",
+            "justMyCode": true,
+            "args": [
+                "--batch-size=8",
+                "--validate-batch-size=8",
+                "--epochs=15",
+                "--lr=0.01"
+            ]
+        }
+    ]
+}
