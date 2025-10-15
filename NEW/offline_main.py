@@ -25,7 +25,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 from time import time
 
+from subset_utils import build_subsets, build_overfit_subsets
+from pipeline import run_pipeline
 
+task_number = 4
 
 def main():
     parser = argparse.ArgumentParser(description='PaHaW offline training')
@@ -70,8 +73,7 @@ def main():
         validate_kargs.update(cuda_kwargs)
     
     transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1317,), (0.3081,))
+        transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
     print(f"Device: {device}")
@@ -80,117 +82,35 @@ def main():
 
     subjects_pd_status_years, subjects_tasks = pahaw_loader.load()
 
-    h_id_list = []
-    pd_id_list = []
-    subjects_ids = list(subjects_tasks.keys())
-
-    for subject_id in subjects_ids:
-        if subjects_pd_status_years[subject_id][0] == 0:
-            h_id_list.append(subject_id)
-        else:
-            pd_id_list.append(subject_id)
-    random.Random(args.seed).shuffle(h_id_list)
-    random.Random(args.seed).shuffle(pd_id_list)
-
-    validate_id_list = h_id_list[:7]
-    train_id_list = h_id_list[7:]
-    validate_id_list.extend(pd_id_list[:6])
-    train_id_list.extend(pd_id_list[6:])
-
-    validate_id_list.sort()
-    train_id_list.sort()
-
-    train_id_set = set(train_id_list)
-    validate_id_set = set(validate_id_list)
+    #train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, task_number, task_number+1)
+    train_ids, train_label_img, validate_ids, validate_label_img = build_overfit_subsets(subjects_pd_status_years, subjects_tasks, args, task_number)
+    print("------------Creacion de subsets:")
+    print(f"All IDs: {subjects_tasks.keys()}")
+    print(f"TRAIN: {train_ids}")
+    print(f"VALIDATE: {validate_ids}")
 
     elapsed_load_data = time() - t0_load_data
     print(f"PaHaW data loaded and patches generated in {(elapsed_load_data):.2f}s")
 
-    validate_data_label_img = []
-    train_data_label_img = []
-    for subject_id in subjects_ids:
-        for task_number in range(2, 9):
-            task = subjects_tasks[subject_id].get(task_number)
-            if task is not None:
-                if subject_id in train_id_set:
-                    train_data_label_img.append(
-                        (
-                            task,
-                            subjects_pd_status_years[subject_id][0]
-                        )
-                    )
-                else:
-                    validate_data_label_img.append(
-                        (
-                            task,
-                            subjects_pd_status_years[subject_id][0]
-                        )
-                    )
-
-    train_pahaw_offline_dataset = PahawOfflineSimDataset(train_data_label_img, device=device, patch_w=200, stepsize=30)
-    validate_pahaw_offline_dataset = PahawOfflineSimDataset(validate_data_label_img, device=device, patch_w=200, stepsize=30)
-
-    train_loader = torch.utils.data.DataLoader(train_pahaw_offline_dataset, **train_kwargs)
-    validate_loader = torch.utils.data.DataLoader(validate_pahaw_offline_dataset, **validate_kargs)
-
-
-    examples = iter(validate_loader)
-    example_data, example_target = next(examples)
-    img_grid = torchvision.utils.make_grid(example_data[0])
-    writer.add_image(f"PD task GT: {example_target}", img_grid)
-    writer.close()
-    save_image(example_data[0], "debug_example.png")  # se guarda en /raiz/NEW/debug_example.png
-
-    train_losses = []
-    train_counter = []
-    validate_losses = []
-    validate_counter = []
-    
-    accuracy_history = []
-
-    model = OfflineCnnLstm().to(device)
-
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
-
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-
-    writer.add_graph(model, example_data.to(device))
-    writer.close()
-
     t0_train = time()
 
-    # Evaluate model before any training (t=0) to get baseline metrics
-    predictions, targets, accuracy = validate(model, device, validate_loader, validate_losses)
-    accuracy_history.append(accuracy)
-    validate_counter.append(0)
-
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, train_losses, train_counter)
-
-        predictions, targets, accuracy = validate(model, device, validate_loader, validate_losses)
-        accuracy_history.append(accuracy)
-        validate_counter.append(epoch * len(train_loader.dataset))
-
-        writer.add_scalar("training loss", validate_losses[-1], epoch)
-        writer.add_scalar("Accuracy", accuracy, epoch)
-
-        scheduler.step()
+    model, accuracy_history, train_losses, validate_losses = run_pipeline(train_ids, validate_ids, train_label_img, validate_label_img, args, device, train_kwargs, validate_kargs, writer, task_number) 
 
     elapsed_train = time() - t0_train
-    print(f"Model traine in {(elapsed_train):.2f}s")
+    print(f"Model trained in {(elapsed_train):.2f}s")
 
-    #Plot results
-    performance_fig = plt.figure()
-    plt.plot(train_counter, train_losses, color='green', zorder=3)
-    plt.scatter(validate_counter, validate_losses, color='purple', zorder=2)
-    plt.legend(['Train loss', 'Validate loss'], loc='upper right')
-    plt.xlabel('number of training samples seen')
-    plt.ylabel('negative log likelihood loss')
-    performance_fig.savefig(f"results/performance.png")
-
-    if args.save_model:
-        torch.save(model.state_dict(), f'results/model_results/my_model.pt')
-        torch.save(optimizer.state_dict(), f'results/model_results/my_optimizer.pt')
+#    #Plot results
+#    performance_fig = plt.figure()
+#    plt.plot(train_counter, train_losses, color='green', zorder=3)
+#    plt.scatter(validate_counter, validate_losses, color='purple', zorder=2)
+#    plt.legend(['Train loss', 'Validate loss'], loc='upper right')
+#    plt.xlabel('number of training samples seen')
+#    plt.ylabel('negative log likelihood loss')
+#    performance_fig.savefig(f"results/performance.png")
+#
+#    if args.save_model:
+#        torch.save(model.state_dict(), f'results/model_results/my_model.pt')
+#        torch.save(optimizer.state_dict(), f'results/model_results/my_optimizer.pt')
 
 
 if __name__ == '__main__':

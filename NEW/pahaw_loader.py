@@ -554,7 +554,7 @@ class Task:
         return norm_coords
 
    
-    def plot_task(self, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
+    def plot_task(self, subdir=None, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
         final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
         final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
         canvases = {
@@ -595,7 +595,7 @@ class Task:
                         canvases['altitude'][y, x] = normalized_altitudes[i]
                         canvases['pressure'][y, x] = normalized_pressures[i]
 
-        output_path = os.path.join("tareas_generadas", f"sujeto{self.subject_id}")
+        output_path = os.path.join("tareas_generadas", subdir)
         filename = os.path.join(output_path, f"tarea{self.task_number}.png")
         stroke_canvas = canvases['stroke']
         stroke_canvas = cv2.flip(stroke_canvas, 0)
@@ -650,7 +650,7 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
             subjects_pd_status_list[subject_i],
             subject_pd_years_list[subject_i],
         )
-        os.makedirs(os.path.join("tareas_generadas", f"sujeto{subject_id}"), exist_ok=True)
+        os.makedirs(os.path.join("tareas_generadas", f"sujeto{subject_id}_GT{subjects_pd_status_list[subject_i]}"), exist_ok=True)
         for task_number in range(1, 9):
             task_file_path_mid = os.path.join(
                 f"{subject_id:05d}", f"{subject_id:05d}__{task_number}"
@@ -700,10 +700,12 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                     subjects_tasks_dict[subject_id] = {}
 
                 subjects_tasks_dict[subject_id][task_number] = new_task
-                new_task.plot_task()
+                new_task.plot_task(subdir=f"sujeto{subject_id}_GT{subjects_pd_status_list[subject_i]}")
             else:
                 print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
         subject_i += 1
+    #print(list(zip(subjects_id_list, subjects_pd_status_list)))
+    #print(subjects_pd_status_years_dict)
 
     return subjects_pd_status_years_dict, subjects_tasks_dict
 

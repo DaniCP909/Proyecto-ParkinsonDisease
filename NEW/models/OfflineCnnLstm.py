@@ -57,16 +57,20 @@ def validate(model, device, validate_loader, validate_losses):
 
     all_predictions = []
     all_targets = []
+    all_indices = []
     
     with torch.no_grad():
-        for data, target in validate_loader:
+        for batch_idx, (data, target) in enumerate(validate_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
-            validate_loss += F.cross_entropy(output, target, reduction='mean').item()
+            validate_loss += F.cross_entropy(output, target, reduction='sum').item()
             pred = output.argmax(dim=1, keepdim=True)  # get index of max log-probability
 
             all_predictions.extend(pred.view(-1).cpu().numpy())
             all_targets.extend(target.cpu().numpy())
+
+            start = batch_idx * validate_loader.batch_size
+            all_indices.extend(range(start, start + len(data)))
 
             correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -79,5 +83,5 @@ def validate(model, device, validate_loader, validate_losses):
 
     accuracy = 100. * correct / len(validate_loader.dataset)
 
-    return all_predictions, all_targets, accuracy
+    return all_predictions, all_targets, all_indices, accuracy
 
