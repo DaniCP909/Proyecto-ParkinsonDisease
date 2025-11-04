@@ -3,15 +3,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class OfflineCnnLstm(nn.Module):
-    def __init__(self, feature_dim=32, lstm_hidden=64, num_classes=2):
+    def __init__(self, feature_dim=128, lstm_hidden=128, num_classes=2):
         super().__init__()
 
         self.cnn = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=5, stride=2),
+            nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(2),
-            nn.Conv2d(128, 256, kernel_size=5, stride=2),
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
             nn.AdaptiveAvgPool2d((5, 5)),
         )
 
@@ -19,24 +28,50 @@ class OfflineCnnLstm(nn.Module):
         self.feature_dim = feature_dim 
 
         self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=lstm_hidden, batch_first=True)
-        self.fc = nn.Linear(lstm_hidden, num_classes)
+        self.fc = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(lstm_hidden, num_classes)
+        )
 
     def forward(self, x):
-        B, T, C, H, W = x.shape
-        x = x.view(B * T, C, H, W)
-        x = self.cnn(x).view(B * T, -1)
-        x = self.cnn_proj(x)
-        x = x.view(B, T, -1)
-        _, (h_n, _) = self.lstm(x)
-        return self.fc(h_n.squeeze(0))
+        # Si ya no hay dimensión temporal
+        if x.ndim == 4:  # (B, 1, H, W)
+            x = self.cnn(x).view(x.size(0), -1)
+            x = self.cnn_proj(x)
+            return self.fc(x)
+        else:
+            # Si accidentalmente llega (B, T, 1, H, W)
+            B, T, C, H, W = x.shape
+            x = x.view(B * T, C, H, W)
+            x = self.cnn(x).view(B * T, -1)
+            x = self.cnn_proj(x)
+            x = x.view(B, T, -1).mean(dim=1)
+            return self.fc(x)
 
 def train(args, model, device, train_loader, optimizer, epoch, train_lossess, train_counter):
     model.train()
+
+    all_predictions = []
+    all_targets = []
+    all_confidences = []
+
+    correct = 0
+
     for batch_idx, (data, target) in enumerate(train_loader):
         # data shape: (B, T, 1, H, W), target shape: (B,)
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
+
+        pred = output.argmax(dim=1, keepdim=True)
+
+        probs = F.softmax(output, dim=1)
+        confidence = probs.max(dim=1)[0]
+        all_confidences.extend(confidence.detach().cpu().numpy())
+
+        all_predictions.extend(pred.view(-1).cpu().numpy())
+        all_targets.extend(target.cpu().numpy())
+
         loss = F.cross_entropy(output, target, reduction='mean')
         loss.backward()
         optimizer.step()
@@ -48,7 +83,12 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
             train_counter.append((batch_idx * len(data)) + ((epoch - 1) * len(train_loader.dataset)))
             if args.dry_run:
                 break
+        correct += pred.eq(target.view_as(pred)).sum().item()
     print(f"Trained Epoch: {epoch}")
+    print('\nTrain Accuracy: {}/{} ({:.0f}%)\n'.format(
+        correct, len(train_loader.dataset),
+        100. * correct / len(train_loader.dataset)))
+    return all_predictions, all_targets, all_confidences
     
 def validate(model, device, validate_loader, validate_losses):
     model.eval()
@@ -58,6 +98,7 @@ def validate(model, device, validate_loader, validate_losses):
     all_predictions = []
     all_targets = []
     all_indices = []
+    all_confidences = []
     
     with torch.no_grad():
         for batch_idx, (data, target) in enumerate(validate_loader):
@@ -65,6 +106,9 @@ def validate(model, device, validate_loader, validate_losses):
             output = model(data)
             validate_loss += F.cross_entropy(output, target, reduction='sum').item()
             pred = output.argmax(dim=1, keepdim=True)  # get index of max log-probability
+            probs = F.softmax(output, dim=1)
+            confidence = probs.max(dim=1)[0]
+            all_confidences.extend(confidence.detach().cpu().numpy())
 
             all_predictions.extend(pred.view(-1).cpu().numpy())
             all_targets.extend(target.cpu().numpy())
@@ -83,5 +127,5 @@ def validate(model, device, validate_loader, validate_losses):
 
     accuracy = 100. * correct / len(validate_loader.dataset)
 
-    return all_predictions, all_targets, all_indices, accuracy
+    return all_predictions, all_targets, all_indices, accuracy, all_confidences
 

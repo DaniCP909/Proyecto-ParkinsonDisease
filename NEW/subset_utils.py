@@ -1,10 +1,14 @@
 # subset_utils.py
 import random
+import math
 
 def build_subsets(subjects_pd_status_years, subjects_tasks, args=None, min_task=5, max_task=6):
     subjects_ids = list(subjects_tasks.keys())
 
     h_id_list, pd_id_list = [], []
+
+    total_len = len(subjects_tasks)
+    split_value = math.floor(0.8 * total_len)
 
     for subject_id in subjects_ids:
         if subjects_pd_status_years[subject_id][0] == 0:
@@ -22,18 +26,12 @@ def build_subsets(subjects_pd_status_years, subjects_tasks, args=None, min_task=
         if i < len(pd_id_list):
             raw_mix.append(pd_id_list[i])
     if len(pd_id_list) > len(h_id_list):
-        raw_mix.extend(pd_id_list[len(h_id_list)])
+        raw_mix.extend(pd_id_list[len(h_id_list):])
 
-    validate_id_list = raw_mix[55:]
-    train_id_list = raw_mix[:55]
+    validate_id_list = raw_mix[split_value:]
+    train_id_list = raw_mix[:split_value]
 
-    repeticiones = [val for val in validate_id_list if val in train_id_list]
-    print(f"REPS: {repeticiones}")
-
-    print("ID finales train")
-    print(train_id_list)
-    print("ID finales validate")
-    print(validate_id_list)
+    print(f"*-*-*-*-*-*-* len train: {len(train_id_list)} | len validate {len(validate_id_list)}")
 
     #Create data sets (IMG, LABEL) structure
     train_label_img, validate_label_img = [], []
@@ -48,10 +46,20 @@ def build_subsets(subjects_pd_status_years, subjects_tasks, args=None, min_task=
             task = subjects_tasks[subject_id].get(task_num)
             if task is not None:
                 validate_label_img.append((task, subjects_pd_status_years[subject_id][0]))
-    print("train_label_img")
-    print(train_label_img)
-    print("train_label_img")
-    print(validate_label_img)
+                
+    print(f"*-*-*-*-*-*-* len train: {len(train_label_img)} | len validate {len(validate_label_img)}")
+    
+    # extraer los task IDs o paths de cada conjunto
+    train_tasks = set(t for t, _ in train_label_img)
+    val_tasks   = set(t for t, _ in validate_label_img)
+
+    # intersección
+    duplicados = train_tasks.intersection(val_tasks)
+
+    print(f"Duplicados encontrados: {len(duplicados)}")
+    if len(duplicados) > 0:
+        print(duplicados)  # muestra algunos
+
     
     return train_id_list, train_label_img, validate_id_list, validate_label_img
 

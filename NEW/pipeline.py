@@ -2,8 +2,15 @@
 import torch
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, Subset
-from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
-from PahawOfflineSimDataset import PahawOfflineSimDataset
+#from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
+from models.OfflineCnnOnly import OfflineCnnOnly, train, validate
+from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
+from datasets.PahawOfflineSimWindowDataset import PahawOfflineSimWindowDataset
+import os
+import cv2
+import numpy as np
+import csv
+from datetime import datetime
 
 wrong_predicts = {
     "2": [5, 16, 17, 21, 24, 27, 31, 32, 35, 36, 38, 39, 46, 52, 56, 60, 64, 65, 70, 71, 72], #batch_size=2
@@ -15,10 +22,74 @@ wrong_predicts = {
     "8": [1, 2, 3, 6, 11, 16, 17, 18, 20, 22, 23, 24, 25, 27, 30, 32, 37, 39, 45, 46, 49, 51, 52, 59, 64, 65, 71, 72],
 }
 
+
+def save_dataset_images(path=None, dataset: PahawOfflineSimDataset=None, train_validate=None, task_num=2, window=False):
+    if dataset is None:
+        print("Dataset not provided.")
+        return
+    if path is None:
+        path = f"/home/dcorredor/github/Proyecto-ParkinsonDisease/NEW/dataset_images/{task_num}"
+    os.makedirs(path, exist_ok=True)
+
+    ids_list = dataset.get_ids_list()
+
+    images_filename = {}
+
+    for i in range(len(dataset)):
+        if not window:
+            img, label = dataset[i]
+            print(img.shape)
+
+            if isinstance(img, torch.Tensor):
+                img = img.detach().cpu().numpy()
+            if img.ndim == 3 and img.shape[0] == 1:
+                img = img.squeeze(0)
+            img_uint8 = (img * 255).clip(0, 255).astype(np.uint8)
+
+        real_id = ids_list[i]
+
+        filename = os.path.join(path, f"{train_validate}_img_{i:04d}_label_{label}_id{real_id}.png")
+        images_filename[real_id] = filename
+        if not window:
+            cv2.imwrite(filename, img_uint8)
+    return images_filename
+
+def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis", task_num=None, train_val="train", model=None):
+    """
+    Creates a CSV with train and validate results
+    filename, target, predict, confidence
+    """
+    if not (len(preds) == len(targets) == len(filenames) == len(confidences)):
+        raise ValueError("List parameters have different length")
+    
+    date = datetime.now()
+    task_path = os.path.join(path, f"{task_num}")
+
+    os.makedirs(task_path, exist_ok=True)
+
+    filename = f"task{task_num}_{model}_{train_val}_{date}.csv"
+    full_path = os.path.join(task_path, filename)
+    with open(full_path, mode="w", newline="", encoding="utf-8") as archivo:
+        escritor = csv.writer(archivo)
+        
+        # Escribimos las filas combinando los elementos de las tres listas
+        escritor.writerow(["filename", "prediction", "target", "confidence"])
+        for a, b, c, d in zip(filenames.values(), preds, targets, confidences):
+            escritor.writerow([a, b, c, d])
+    
+    print(f"Archivo '{full_path}' creado con éxito.")
+    
+
+
 def run_pipeline(train_ids, validate_ids, train_data, validate_data, args=None, device=None, train_kargs=None, validate_kargs=None, writer=None, task=2):
-    print(f"ARGS: {args}")
     train_dataset = PahawOfflineSimDataset(train_data, device=device, patch_w=200, stepsize=30, id_list=train_ids)
     val_dataset = PahawOfflineSimDataset(validate_data, device=device, patch_w=200, stepsize=30, id_list=validate_ids)
+
+    patches_tensor, label = train_dataset[0]
+    print(f"SHAPE: {patches_tensor.shape}")
+
+    train_filenames = save_dataset_images(dataset=train_dataset, train_validate="train", task_num=task, window=False)
+    val_filenames = save_dataset_images(dataset=val_dataset, train_validate="validate", task_num=task, window=False)
 
     print(f"LEN train: {len(train_dataset)}")
     print(f"LEN validate: {len(val_dataset)}")
@@ -42,32 +113,35 @@ def run_pipeline(train_ids, validate_ids, train_data, validate_data, args=None, 
 #    validate_ids = [id(task) for task, _ in validate_items]
 #    print("IDs de tareas iguales?", train_ids == validate_ids)
 
-    train_loader = DataLoader(filtered_train_dataset, **train_kargs)
-    val_loader = DataLoader(filtered_validate_dataset, **validate_kargs)
+    train_loader = DataLoader(train_dataset, **train_kargs)
+    val_loader = DataLoader(val_dataset, **validate_kargs)
 
     train_losses, validate_losses, accuracy_history = [], [], []
     train_counter, validate_counter = [], []
 
-    model = OfflineCnnLstm().to(device)
+    model = OfflineCnnOnly().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     # baseline
-    _, _, all_indices, acc = validate(model, device, val_loader, validate_losses)
+    _, _, all_indices, acc, _ = validate(model, device, val_loader, validate_losses)
     accuracy_history.append(acc)
     validate_counter.append(0)
 
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, train_losses, train_counter)
-        preds, targets, all_indices,  acc = validate(model, device, val_loader, validate_losses)
+        train_preds, train_targets, train_confidences = train(args, model, device, train_loader, optimizer, epoch, train_losses, train_counter)
+        val_preds, val_targets, all_indices,  acc, val_confidences = validate(model, device, val_loader, validate_losses)
         accuracy_history.append(acc)
         validate_counter.append(epoch * len(train_loader.dataset))
         if writer is not None:
             writer.add_scalar("Accuracy", acc, epoch)
         scheduler.step()
 
-    errores = [idx for idx, (p, t) in enumerate(zip(preds, targets)) if p != t]
+    errores = [idx for idx, (p, t) in enumerate(zip(train_preds, train_targets)) if p != t]
 
     print("Fallos en índices:", errores)
+
+    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_confidences, task_num=task, train_val="train", model="CnnOnly")
+    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_confidences, task_num=task, train_val="validate", model="CnnOnly")
 
     return model, accuracy_history, train_losses, validate_losses

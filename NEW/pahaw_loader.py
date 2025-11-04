@@ -11,7 +11,6 @@ import cv2
 
 from utils.CustomMorphOps import bresenham_line, normalize
 
-
 class Stroke(list[tuple[int, int, int, int, int]]):
     """Un trazo es una lista de coordenadas (x, y).
 

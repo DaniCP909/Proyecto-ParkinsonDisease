@@ -17,8 +17,11 @@ from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 from torchvision.utils import save_image
 from collections import Counter
+import os
+import numpy as np
+import cv2
 
-from PahawOfflineSimDataset import PahawOfflineSimDataset
+from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
 from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
 
 from torch.utils.tensorboard import SummaryWriter
@@ -28,7 +31,7 @@ from time import time
 from subset_utils import build_subsets, build_overfit_subsets
 from pipeline import run_pipeline
 
-task_number = 4
+task_number = 8
 
 def main():
     parser = argparse.ArgumentParser(description='PaHaW offline training')
@@ -83,9 +86,9 @@ def main():
     subjects_pd_status_years, subjects_tasks = pahaw_loader.load()
 
     #train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, task_number, task_number+1)
-    train_ids, train_label_img, validate_ids, validate_label_img = build_overfit_subsets(subjects_pd_status_years, subjects_tasks, args, task_number)
-    print("------------Creacion de subsets:")
-    print(f"All IDs: {subjects_tasks.keys()}")
+    train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, min_task=task_number, max_task=task_number+1)
+    #print("------------Creacion de subsets:")
+    #print(f"All IDs: {subjects_tasks.keys()}")
     print(f"TRAIN: {train_ids}")
     print(f"VALIDATE: {validate_ids}")
 
@@ -93,6 +96,8 @@ def main():
     print(f"PaHaW data loaded and patches generated in {(elapsed_load_data):.2f}s")
 
     t0_train = time()
+
+    print(f"Longitud train {len(train_label_img)} Longitud validate {len(validate_label_img)}")
 
     model, accuracy_history, train_losses, validate_losses = run_pipeline(train_ids, validate_ids, train_label_img, validate_label_img, args, device, train_kwargs, validate_kargs, writer, task_number) 
 

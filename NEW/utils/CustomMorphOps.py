@@ -78,3 +78,33 @@ def normalize(values: list[int], fallback: float = 0.5) -> list[int]:
         if max_v - min_v == 0:
             return [fallback] * len(values)
         return [(v - min_v) / (max_v - min_v) for v in values]
+
+def crop_black_columns(img):
+    """
+    Remove columns tah are completely black (all zeros)
+    """
+    mask = ~(img == 0).all(axis=0)
+    no_black_columns = img[:, mask]
+    return no_black_columns
+
+def restore_full_width(img, cropped_img):
+    """
+    Restore the width of the original image by filling the removed columns.
+    If fill_value is None, the cropped image will be repeated (tiled) horizontally.
+    Otherwise, the remaining columns are filled with the specified value (e.g., 255 for white).
+    """
+    full_h, full_w = img.shape
+    reduced_h, reduced_w = cropped_img.shape
+    n_copies = int(np.ceil(full_w / reduced_w))
+    tiled = np.tile(cropped_img, (1, n_copies))[:, :full_w]
+    return tiled
+
+def clean_and_refill(img):
+    """
+    Complete pipeline: remove black columns and restore width.
+    If fill_value is None, repeats the cropped image to fill the width.
+    If fill_value is specified (e.g., 255), fills the removed area with that value.
+    """
+    cropped_img = crop_black_columns(img)
+    final_result = restore_full_width(img, cropped_img)
+    return final_result
