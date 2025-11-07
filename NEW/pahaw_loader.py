@@ -8,6 +8,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+import pickle
 
 from utils.CustomMorphOps import bresenham_line, normalize
 
@@ -627,6 +628,9 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
     el valor es una tupla con el estado PD y los años PD y en el otro una lista con las
     tareas 2, 3 y 4 del sujeto.
     """
+    
+    cache_dir = "cache"
+    os.makedirs(cache_dir, exist_ok=True)
 
     pahaw_file_path = os.path.join("PaHaW", "PaHaW_files", "corpus_PaHaW.xlsx")
     pahaw_data_frame = pandas.read_excel(pahaw_file_path)
@@ -692,14 +696,25 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                 print(f"Archivo no encontrado: {task_file_path}, se omite.")
 
             subjects_pd_status_years_dict[subject_id] = pd_status_years
-            if task_strokes_list:  # Solo si hay trazos
-                new_task = Task(subject_id, task_number, task_strokes_list, all_coords)
 
+            if task_strokes_list:  # Solo si hay trazos
+                cache_path = os.path.join(cache_dir, f"{subject_id}_task{task_number}.pkl")
+
+                if os.path.exists(cache_path):
+                    with open(cache_path, "rb") as f:
+                        new_task = pickle.load(f)
+                    print(f"[CACHE] Cargada tarea {task_number} del sujeto {subject_id}")
+                else:
+                    new_task = Task(subject_id, task_number, task_strokes_list, all_coords)
+
+                    new_task.plot_task(subdir=f"sujeto{subject_id}_GT{subjects_pd_status_list[subject_i]}")
+
+                    with open(cache_path, "wb") as f:
+                        pickle.dump(new_task, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    print(f"[CACHE] Guardada tarea {task_number} del sujeto {subject_id}")
                 if subject_id not in subjects_tasks_dict:
                     subjects_tasks_dict[subject_id] = {}
-
                 subjects_tasks_dict[subject_id][task_number] = new_task
-                new_task.plot_task(subdir=f"sujeto{subject_id}_GT{subjects_pd_status_list[subject_i]}")
             else:
                 print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
         subject_i += 1

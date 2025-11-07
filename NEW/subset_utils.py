@@ -31,8 +31,6 @@ def build_subsets(subjects_pd_status_years, subjects_tasks, args=None, min_task=
     validate_id_list = raw_mix[split_value:]
     train_id_list = raw_mix[:split_value]
 
-    print(f"*-*-*-*-*-*-* len train: {len(train_id_list)} | len validate {len(validate_id_list)}")
-
     #Create data sets (IMG, LABEL) structure
     train_label_img, validate_label_img = [], []
     #Train Validate and overfit
@@ -47,7 +45,6 @@ def build_subsets(subjects_pd_status_years, subjects_tasks, args=None, min_task=
             if task is not None:
                 validate_label_img.append((task, subjects_pd_status_years[subject_id][0]))
                 
-    print(f"*-*-*-*-*-*-* len train: {len(train_label_img)} | len validate {len(validate_label_img)}")
     
     # extraer los task IDs o paths de cada conjunto
     train_tasks = set(t for t, _ in train_label_img)

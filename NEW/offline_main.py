@@ -71,7 +71,7 @@ def main():
         cuda_kwargs = {
             'num_workers': 1,
             'pin_memory': True,
-            'shuffle': True}
+            'shuffle': False}
         train_kwargs.update(cuda_kwargs)
         validate_kargs.update(cuda_kwargs)
     
@@ -103,6 +103,8 @@ def main():
 
     elapsed_train = time() - t0_train
     print(f"Model trained in {(elapsed_train):.2f}s")
+
+    print(subjects_pd_status_years)
 
 #    #Plot results
 #    performance_fig = plt.figure()
