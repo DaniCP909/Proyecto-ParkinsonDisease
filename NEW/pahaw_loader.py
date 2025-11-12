@@ -392,7 +392,7 @@ class Task:
         pd_predicted: int. 0 para H y 1 para PD.
     """
 
-    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke], all_coords: list[tuple[int, int, int, int, int, int, int]]):
+    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke], all_coords: list[tuple[int, int, int, int, int, int, int]], pd_status=0):
         self.subject_id = subject_id
         self.task_number = task_number
         self.min_vals = {
@@ -421,6 +421,7 @@ class Task:
         self.all_coords = self._normalize_coords_data() #normalize all coords and its data
         self.predicted_h_length: int = 0
         self.predicted_pd_length: int = 0
+        self.pd_status = pd_status
         self.pd_predicted: int
         self.canvases = None
 
@@ -596,6 +597,7 @@ class Task:
                         canvases['pressure'][y, x] = normalized_pressures[i]
 
         output_path = os.path.join("tareas_generadas", subdir)
+        os.makedirs(output_path, exist_ok=True)
         filename = os.path.join(output_path, f"tarea{self.task_number}.png")
         stroke_canvas = canvases['stroke']
         stroke_canvas = cv2.flip(stroke_canvas, 0)
@@ -703,15 +705,15 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
                 if os.path.exists(cache_path):
                     with open(cache_path, "rb") as f:
                         new_task = pickle.load(f)
-                    print(f"[CACHE] Cargada tarea {task_number} del sujeto {subject_id}")
+                    #print(f"[CACHE] Cargada tarea {task_number} del sujeto {subject_id}")
                 else:
-                    new_task = Task(subject_id, task_number, task_strokes_list, all_coords)
+                    new_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0])
 
                     new_task.plot_task(subdir=f"sujeto{subject_id}_GT{subjects_pd_status_list[subject_i]}")
 
                     with open(cache_path, "wb") as f:
                         pickle.dump(new_task, f, protocol=pickle.HIGHEST_PROTOCOL)
-                    print(f"[CACHE] Guardada tarea {task_number} del sujeto {subject_id}")
+                    #print(f"[CACHE] Guardada tarea {task_number} del sujeto {subject_id}")
                 if subject_id not in subjects_tasks_dict:
                     subjects_tasks_dict[subject_id] = {}
                 subjects_tasks_dict[subject_id][task_number] = new_task

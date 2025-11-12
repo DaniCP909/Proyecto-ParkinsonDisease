@@ -31,8 +31,6 @@ from time import time
 from subset_utils import build_subsets, build_overfit_subsets
 from pipeline import run_pipeline
 
-task_number = 8
-
 def main():
     parser = argparse.ArgumentParser(description='PaHaW offline training')
 
@@ -47,9 +45,12 @@ def main():
     parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed (default = 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False, help='Saves current Model')
+    parser.add_argument('--task-num', type=int, default=2, metavar='N', help='Task number')
 
     args = parser.parse_args()
     writer = SummaryWriter("runs/pd-detection")
+
+    task_number = args.task_num
 
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     use_mps = not args.no_mps and torch.backends.mps.is_available()
@@ -69,7 +70,7 @@ def main():
     validate_kargs = {'batch_size': args.validate_batch_size}
     if use_cuda:
         cuda_kwargs = {
-            'num_workers': 1,
+            'num_workers': 2,
             'pin_memory': True,
             'shuffle': False}
         train_kwargs.update(cuda_kwargs)

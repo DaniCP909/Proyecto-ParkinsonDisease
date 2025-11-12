@@ -8,7 +8,7 @@ import cv2
 
 class PahawOfflineSimWindowDataset(Dataset):
 
-    def __init__(self, data: list[tuple], device, transform=None, patch_w=200, stepsize=2, id_list=[], task_num=2):
+    def __init__(self, data: list[tuple], device, transform=None, patch_w=200, stepsize=2, task_num=2):
         zip_tasks, zip_labels = zip(*data)
         self.tasks = list(zip_tasks)
         self.labels = list(zip_labels)
@@ -22,7 +22,6 @@ class PahawOfflineSimWindowDataset(Dataset):
         for task in self.tasks:
             self.max_h = max(self.max_h, task.getHeight())
             self.max_w = max(self.max_w, task.getWidth())
-        self.id_list = id_list
 
     def __len__(self):
         return len(self.labels)
@@ -46,6 +45,4 @@ class PahawOfflineSimWindowDataset(Dataset):
         patches_tensor = torch.tensor(np.stack(patches), dtype=torch.float32).unsqueeze(1)
         return patches_tensor, label
     
-    def get_ids_list(self):
-        return self.id_list
 
