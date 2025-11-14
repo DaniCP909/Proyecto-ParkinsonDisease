@@ -7,7 +7,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-import pahaw_loader
 import random
 import argparse
 import torch
@@ -23,6 +22,7 @@ import cv2
 
 from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
 from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
+from domain.PahawLoader import PahawLoader
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -84,6 +84,7 @@ def main():
 
     t0_load_data = time()
 
+    pahaw_loader = PahawLoader()
     subjects_pd_status_years, subjects_tasks = pahaw_loader.load()
 
     #train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, task_number, task_number+1)

@@ -2,8 +2,8 @@
 import torch
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, Subset
-#from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
-from models.OfflineCnnOnly import OfflineCnnOnly, train, validate
+from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
+#from models.OfflineCnnOnly import OfflineCnnOnly, train, validate
 from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
 from datasets.PahawOfflineSimWindowDataset import PahawOfflineSimWindowDataset
 import os
@@ -119,7 +119,7 @@ def run_pipeline(train_ids, validate_ids, train_data, validate_data, args=None, 
     train_losses, validate_losses, accuracy_history = [], [], []
     train_counter, validate_counter = [], []
 
-    model = OfflineCnnOnly().to(device)
+    model = OfflineCnnLstm().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 

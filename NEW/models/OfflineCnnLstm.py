@@ -53,11 +53,12 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
 
     all_predictions = []
     all_targets = []
-    all_confidences = []
+    all_pd_neur_probs = []
+    all_idx = []
 
     correct = 0
 
-    for batch_idx, (data, target) in enumerate(train_loader):
+    for batch_idx, (data, target, _, idx) in enumerate(train_loader):
         # data shape: (B, T, 1, H, W), target shape: (B,)
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -66,11 +67,13 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
         pred = output.argmax(dim=1, keepdim=True)
 
         probs = F.softmax(output, dim=1)
-        confidence = probs.max(dim=1)[0]
-        all_confidences.extend(confidence.detach().cpu().numpy())
+        #confidence = probs.max(dim=1)[0]
+        all_pd_neur_probs.extend(probs[:, 1].detach().cpu().numpy())
 
         all_predictions.extend(pred.view(-1).cpu().numpy())
         all_targets.extend(target.cpu().numpy())
+
+        all_idx.extend(idx.cpu().numpy())
 
         loss = F.cross_entropy(output, target, reduction='mean')
         loss.backward()
@@ -88,7 +91,7 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
     print('\nTrain Accuracy: {}/{} ({:.0f}%)\n'.format(
         correct, len(train_loader.dataset),
         100. * correct / len(train_loader.dataset)))
-    return all_predictions, all_targets, all_confidences
+    return all_predictions, all_targets, all_pd_neur_probs, all_idx
     
 def validate(model, device, validate_loader, validate_losses):
     model.eval()
@@ -97,24 +100,24 @@ def validate(model, device, validate_loader, validate_losses):
 
     all_predictions = []
     all_targets = []
-    all_indices = []
-    all_confidences = []
+    all_idx = []
+    all_pd_neur_probs = []
     
     with torch.no_grad():
-        for batch_idx, (data, target) in enumerate(validate_loader):
+        for batch_idx, (data, target, _, idx) in enumerate(validate_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
             validate_loss += F.cross_entropy(output, target, reduction='sum').item()
             pred = output.argmax(dim=1, keepdim=True)  # get index of max log-probability
             probs = F.softmax(output, dim=1)
             confidence = probs.max(dim=1)[0]
-            all_confidences.extend(confidence.detach().cpu().numpy())
+            all_pd_neur_probs.extend(confidence.detach().cpu().numpy())
 
             all_predictions.extend(pred.view(-1).cpu().numpy())
             all_targets.extend(target.cpu().numpy())
 
             start = batch_idx * validate_loader.batch_size
-            all_indices.extend(range(start, start + len(data)))
+            all_idx.extend(idx.cpu().numpy())
 
             correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -127,5 +130,5 @@ def validate(model, device, validate_loader, validate_losses):
 
     accuracy = 100. * correct / len(validate_loader.dataset)
 
-    return all_predictions, all_targets, all_indices, accuracy, all_confidences
+    return all_predictions, all_targets, accuracy, all_pd_neur_probs, all_idx
 
