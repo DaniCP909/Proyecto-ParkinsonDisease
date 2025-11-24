@@ -5,7 +5,7 @@ import cv2
 
 from matplotlib import pyplot as plt
 
-from utils.CustomMorphOps import normalize, simple_bresenham_line, bresenham_line
+from utils.CustomMorphOps import normalize, simple_bresenham_line, bresenham_line, fit_into_normalized_canvas, clean_and_refill
 
 from domain.Stroke import Stroke
 from domain.LetterSet import LetterSet
@@ -60,7 +60,7 @@ class Task:
         self.data = None
         self.data_cache_path = None
 
-    def generate_data(self):
+    def generate_data(self, final_h, final_w):
         """
         Generates representation data.
         For SIMPLE_STROKE and ENHANCED_STROKE stores/read PNG from disk.
@@ -84,7 +84,9 @@ class Task:
                 return
 
             result = self._rep_simple_stroke()
-            write_img = (result * 255).astype(np.uint8)
+            normalized = fit_into_normalized_canvas(result, final_h, final_w)
+            cr_result = clean_and_refill(normalized)
+            write_img = (cr_result * 255).astype(np.uint8)
             cv2.imwrite(cache_simple, write_img)
             self.data = result
             self.data_cache_path = cache_simple
@@ -97,6 +99,8 @@ class Task:
                 self.data_cache_path = cache_enhanced
                 return
             result = self._rep_enhanced_stroke()
+            normalized = fit_into_normalized_canvas(result, final_h, final_w)
+            cr_result = clean_and_refill(normalized)
             write_img = (result * 255).astype(np.uint8)
 
             cv2.imwrite(cache_enhanced, write_img)

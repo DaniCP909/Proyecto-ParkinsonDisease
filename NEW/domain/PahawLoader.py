@@ -31,6 +31,9 @@ class PahawLoader:
         self.subjects_pd_status_years_dict = {}
         self.subject_tasks_dict = {}
 
+        self.global_max_x = 0
+        self.global_max_y = 0
+
         #CACHE
         cache_dir = "cache"
         os.makedirs(cache_dir, exist_ok=True)
@@ -69,7 +72,7 @@ class PahawLoader:
             )
             os.makedirs(os.path.join("generated_tasks", f"subject{subject_id}_GT{subjects_pd_status_list[subject_i]}"), exist_ok=True)
 
-            for task_number in range(1,9):
+            for task_number in range(2,9):
                 task_file_path_mid = os.path.join(
                     f"{subject_id:05d}", f"{subject_id:05d}__{task_number}"
                 )
@@ -117,27 +120,44 @@ class PahawLoader:
                 if task_strokes_list:    #si hay trazo
 
                     new_simple_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.SIMPLE_STROKE)
-                    new_simple_task.generate_data()
+                    #new_simple_task.generate_data()
 
-                    new_enhanced_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ENHANCED_STROKE)
-                    new_enhanced_task.generate_data()
+                    if new_simple_task.getWidth() > self.global_max_x:
+                        self.global_max_x = new_simple_task.getWidth()
 
-                    new_multichannel_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.MULTICHANNEL)
-                    new_multichannel_task.generate_data()
+                    if new_simple_task.getHeight() > self.global_max_y:
+                        self.global_max_y = new_simple_task.getHeight()
 
-                    debug = (new_enhanced_task.data * 255).astype(np.uint8)
+                    #new_enhanced_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ENHANCED_STROKE)
+                    #new_enhanced_task.generate_data()
 
-                    cv2.imwrite(f"tareas_generadas/img_{subject_id}_{task_number}.png", debug)
+                    #new_multichannel_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.MULTICHANNEL)
+                    #new_multichannel_task.generate_data()
+
+                    #debug = (new_enhanced_task.data * 255).astype(np.uint8)
+
+                    #cv2.imwrite(f"tareas_generadas/img_{subject_id}_{task_number}.png", debug)
 
                         #print(f"[CACHE] Guardada tarea {task_number} del sujeto {subject_id}")
                     if subject_id not in subjects_tasks_dict:
                         subjects_tasks_dict[subject_id] = {}
-                    subjects_tasks_dict[subject_id][task_number] = new_enhanced_task
+                    subjects_tasks_dict[subject_id][task_number] = new_simple_task
                 else:
                     print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
             subject_i += 1
         #print(list(zip(subjects_id_list, subjects_pd_status_list)))
         #print(subjects_pd_status_years_dict)
+
+        print(f"MEDIDAS FINALES: {self.global_max_x}, {self.global_max_y}")
+
+        subject_ii = 0
+        while subject_ii < len(subjects_id_list):
+            subject_id = subjects_id_list[subject_ii]
+            for task_number in range(2,9):
+                task = subjects_tasks_dict[subject_id].get(task_number)
+                if task is not None:
+                    task.generate_data(self.global_max_y, self.global_max_x)
+            subject_ii += 1
 
         self.subjects_pd_status_years_dict = subjects_pd_status_years_dict
         self.subjects_tasks_dict = subjects_tasks_dict
