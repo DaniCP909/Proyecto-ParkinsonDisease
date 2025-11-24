@@ -5,7 +5,7 @@ import cv2
 def fit_into_normalized_canvas(img, max_h, max_w):
     final_w = int(round_up_to(max_w, 50) * .5)
     final_h = int(round_up_to(max_h, 16) * .5)
-    canvas = np.zeros((final_h, final_w),dtype=np.float64)
+    canvas = np.zeros((final_h, final_w),dtype=np.float32)
     img_h, img_w = img.shape
 
     h_ratio = final_h / img_h
@@ -27,6 +27,48 @@ def fit_into_normalized_canvas(img, max_h, max_w):
 
 def round_up_to(x, base):
     return base * math.ceil(x / base)
+
+def simple_bresenham_line(x1, y1, x2, y2, thickness=1):
+    dx = abs(x2 - x1)
+    dy = abs(y2 - y1)
+    x, y = x1, y1
+
+    sx = 1 if x2 > x1 else -1
+    sy = 1 if y2 > y1 else -1
+
+    pixels = []
+    half = thickness // 2
+
+    if dx > dy:   
+        err = dx // 2
+        while x != x2:
+            for t in range(-half, half + 1):
+                pixels.append((y + t, x))   # (fila, columna)
+            err -= dy
+            if err < 0:
+                y += sy
+                err += dx
+            x += sx
+    else:
+        err = dy // 2
+        while y != y2:
+            for t in range(-half, half + 1):
+                pixels.append((y, x + t))   # (fila, columna)
+            err -= dx
+            if err < 0:
+                x += sx
+                err += dy
+            y += sy
+
+    # último punto
+    for t in range(-half, half + 1):
+        if dx > dy:
+            pixels.append((y + t, x2))
+        else:
+            pixels.append((y2, x + t))
+
+    return pixels
+
 
 
 def bresenham_line(x1, y1, x2, y2, height, width, thickness=1):

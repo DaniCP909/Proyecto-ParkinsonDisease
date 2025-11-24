@@ -87,26 +87,26 @@ def main():
     pahaw_loader = PahawLoader()
     subjects_pd_status_years, subjects_tasks = pahaw_loader.load()
 
-    #train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, task_number, task_number+1)
-    train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, min_task=task_number, max_task=task_number+1)
-    #print("------------Creacion de subsets:")
-    #print(f"All IDs: {subjects_tasks.keys()}")
-    print(f"TRAIN: {train_ids}")
-    print(f"VALIDATE: {validate_ids}")
-
     elapsed_load_data = time() - t0_load_data
     print(f"PaHaW data loaded and patches generated in {(elapsed_load_data):.2f}s")
-
-    t0_train = time()
-
-    print(f"Longitud train {len(train_label_img)} Longitud validate {len(validate_label_img)}")
-
-    model, accuracy_history, train_losses, validate_losses = run_pipeline(train_ids, validate_ids, train_label_img, validate_label_img, args, device, train_kwargs, validate_kargs, writer, task_number) 
-
-    elapsed_train = time() - t0_train
-    print(f"Model trained in {(elapsed_train):.2f}s")
-
-    print(subjects_pd_status_years)
+#    #train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, task_number, task_number+1)
+#    train_ids, train_label_img, validate_ids, validate_label_img = build_subsets(subjects_pd_status_years, subjects_tasks, args, min_task=task_number, max_task=task_number+1)
+#    #print("------------Creacion de subsets:")
+#    #print(f"All IDs: {subjects_tasks.keys()}")
+#    print(f"TRAIN: {train_ids}")
+#    print(f"VALIDATE: {validate_ids}")
+#
+#
+#    t0_train = time()
+#
+#    print(f"Longitud train {len(train_label_img)} Longitud validate {len(validate_label_img)}")
+#
+#    model, accuracy_history, train_losses, validate_losses = run_pipeline(train_ids, validate_ids, train_label_img, validate_label_img, args, device, train_kwargs, validate_kargs, writer, task_number) 
+#
+#    elapsed_train = time() - t0_train
+#    print(f"Model trained in {(elapsed_train):.2f}s")
+#
+#    print(subjects_pd_status_years)
 
 #    #Plot results
 #    performance_fig = plt.figure()

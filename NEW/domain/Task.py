@@ -3,10 +3,13 @@ import sys
 import os
 import cv2
 
-from utils.CustomMorphOps import normalize, bresenham_line
+from matplotlib import pyplot as plt
+
+from utils.CustomMorphOps import normalize, simple_bresenham_line, bresenham_line
 
 from domain.Stroke import Stroke
 from domain.LetterSet import LetterSet
+from domain.RepresentationType import RepresentationType
 
 class Task:
     """Una tarea es una lista de cinco conjuntos de letras.
@@ -20,7 +23,7 @@ class Task:
         pd_predicted: int. 0 para H y 1 para PD.
     """
 
-    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke], all_coords: list[tuple[int, int, int, int, int, int, int]], pd_status=0):
+    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke], all_coords: list[tuple[int, int, int, int, int, int, int]], pd_status=0, rep_type: RepresentationType = None, cache_base_dir = "cache"):
         self.subject_id = subject_id
         self.task_number = task_number
         self.min_vals = {
@@ -51,7 +54,191 @@ class Task:
         self.predicted_pd_length: int = 0
         self.pd_status = pd_status
         self.pd_predicted: int
-        self.canvases = None
+        self.rep_type = rep_type
+        self.cache_base_dir = cache_base_dir
+        #Representation attributtes
+        self.data = None
+        self.data_cache_path = None
+
+    def generate_data(self):
+        """
+        Generates representation data.
+        For SIMPLE_STROKE and ENHANCED_STROKE stores/read PNG from disk.
+        For MULTICHANNEL_STROKE tries to use stored ENHANCED_STROKE
+        No cache for ONLINE_SIGNAL 
+        """
+        os.makedirs(self.cache_base_dir, exist_ok=True)
+
+        #Cache path depending on RepresentationType
+        base_name = f"{self.subject_id}_task{self.task_number}"
+
+        cache_simple = os.path.join(self.cache_base_dir, base_name + "_simple.png")
+        cache_enhanced = os.path.join(self.cache_base_dir, base_name + "_enhanced.png")
+        cache_multichannel = os.path.join(self.cache_base_dir, base_name + "_multichannel.npz")
+
+        # --- SIMPLE_STROKE -------------------------
+        if self.rep_type == RepresentationType.SIMPLE_STROKE:
+            if os.path.exists(cache_simple):
+                self.data = cv2.imread(cache_simple, cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0
+                self.data_cache_path = cache_simple
+                return
+
+            result = self._rep_simple_stroke()
+            write_img = (result * 255).astype(np.uint8)
+            cv2.imwrite(cache_simple, write_img)
+            self.data = result
+            self.data_cache_path = cache_simple
+            return
+        
+        # --- ENHANCED_STROKE -------------------------
+        if self.rep_type == RepresentationType.ENHANCED_STROKE:
+            if os.path.exists(cache_enhanced):
+                self.data = cv2.imread(cache_enhanced, cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0
+                self.data_cache_path = cache_enhanced
+                return
+            result = self._rep_enhanced_stroke()
+            write_img = (result * 255).astype(np.uint8)
+
+            cv2.imwrite(cache_enhanced, write_img)
+            self.data = result
+            self.data_cache_path = cache_enhanced
+            return
+        
+        # --- MULTICHANNEL_STROKE ---------------------
+        if self.rep_type == RepresentationType.MULTICHANNEL:
+            if os.path.exists(cache_multichannel):
+                loaded = np.load(cache_multichannel)
+                self.data = {key: loaded[key] for key in loaded.files}
+                self.data_cache_path = cache_multichannel
+                return
+            
+            if os.path.exists(cache_enhanced):
+                base_img = cv2.imread(cache_enhanced, cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0
+            else:
+                base_img = self._rep_enhanced_stroke()
+                cv2.imwrite(cache_enhanced, (base_img * 255).astype(np.uint8))
+
+            result_dict = self._rep_multichannel(base_img)
+
+            np.savez(cache_multichannel, **result_dict)
+
+            self.data = result_dict
+            self.data_cache_path = cache_multichannel
+            return
+        
+        # --- ONLINE_SIGNAL -------------------------
+        if self.rep_type == RepresentationType.ONLINE_SIGNAL:
+            self.data = self.all_coords
+            return
+    
+    def _rep_simple_stroke(self):
+        final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
+        final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
+        canvas = np.zeros((final_h, final_w), dtype=np.float32)
+        
+        for letters_set in self.letters_sets_list:
+            for stroke in letters_set.strokes_list:
+                stroke_x_list = stroke.get_x_coordinates_list()
+                stroke_y_list = stroke.get_y_coordinates_list()
+                normalized_x = [x - self.min_vals['x_surface'] for x in stroke_x_list]
+                normalized_y = [y - self.min_vals['y_surface'] for y in stroke_y_list]
+                
+                for i in range(len(stroke_x_list) -1):
+                    pixels = simple_bresenham_line(
+                        normalized_x[i],
+                        normalized_y[i],
+                        normalized_x[i+1],
+                        normalized_y[i+1],
+                        thickness=2,
+                        )
+                    for y, x in pixels:
+                        if 0 <= y < final_h and 0 <= x < final_w:
+                            canvas[y, x] = 1.0
+        
+        flip_img = cv2.flip(canvas, 0)
+        return flip_img
+
+    def _rep_enhanced_stroke(self, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
+        final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
+        final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
+        canvas = np.ones((final_h, final_w), dtype=np.float32)
+        for letters_set in self.letters_sets_list:
+            for stroke in letters_set.strokes_list:
+                stroke_x_list = stroke.get_x_coordinates_list()
+                stroke_y_list = stroke.get_y_coordinates_list()
+                normalized_x = [x - self.min_vals['x_surface'] for x in stroke_x_list]
+                normalized_y = [y - self.min_vals['y_surface'] for y in stroke_y_list]
+                altitudes = stroke.getAltitudes()
+                normalized_altitudes = normalize(altitudes)
+                pressures = stroke.getPressures()
+                normalized_pressures = normalize(pressures)
+                for i in range(len(stroke_x_list) -1):
+                    darkening_factor = min_dark_factor + (max_dark_factor - min_dark_factor) * (1 - normalized_pressures[i])
+                    thickness_factor = min_thickness + (max_thickness - min_thickness) * (1 - normalized_altitudes[i])
+                    pixels = bresenham_line(
+                        normalized_x[i],
+                        normalized_y[i],
+                        normalized_x[i+1],
+                        normalized_y[i+1],
+                        height=final_h,
+                        width=final_w,
+                        thickness=int(thickness_factor),
+                        )
+                    for y, x in pixels:
+                        canvas[y, x] *= darkening_factor
+
+        flip_img = cv2.flip(canvas, 0)
+        negative_img = 1.0 - flip_img
+        return negative_img
+
+
+    def _rep_multichannel(self, base_img, min_thickness = 2, max_thickness = 10):
+        final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
+        final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
+        canvases = {
+            name: (
+                base_img.copy() if name == 'stroke'
+                else np.zeros((final_h, final_w), dtype=np.float32)
+            )
+            for name in ['stroke', 'timestamp', 'azimuth', 'altitude', 'pressure']
+        }
+        for letters_set in self.letters_sets_list:
+            for stroke in letters_set.strokes_list:
+                stroke_x_list = stroke.get_x_coordinates_list()
+                stroke_y_list = stroke.get_y_coordinates_list()
+                normalized_x = [x - self.min_vals['x_surface'] for x in stroke_x_list]
+                normalized_y = [y - self.min_vals['y_surface'] for y in stroke_y_list]
+                normalized_timestamp = stroke.getTimestamps()
+                normalized_azimuths = stroke.getAzimuths()
+                altitudes = stroke.getAltitudes()
+                normalized_altitudes = normalize(altitudes)
+                pressures = stroke.getPressures()
+                normalized_pressures = normalize(pressures)
+                for i in range(len(stroke_x_list) -1):
+                    thickness_factor = min_thickness + (max_thickness - min_thickness) * (1 - normalized_altitudes[i])
+                    pixels = bresenham_line(
+                        normalized_x[i],
+                        normalized_y[i],
+                        normalized_x[i+1],
+                        normalized_y[i+1],
+                        height=final_h,
+                        width=final_w,
+                        thickness=int(thickness_factor),
+                        )
+                    for y, x in pixels:
+                        canvases['timestamp'][y, x] = normalized_timestamp[i]
+                        canvases['azimuth'][y, x] = normalized_azimuths[i]
+                        canvases['altitude'][y, x] = normalized_altitudes[i]
+                        canvases['pressure'][y, x] = normalized_pressures[i]
+
+        # Flip (igual que enhanced)
+        for key in canvases:        
+            # si es stroke y proviene del enhanced → NO flip
+            if key == 'stroke' and base_img is not None:
+                continue
+            
+            canvases[key] = cv2.flip(canvases[key], 0)
+        return canvases
 
     def getHeight(self):
         return self.max_vals['y_surface'] - self.min_vals['y_surface']
@@ -181,62 +368,6 @@ class Task:
                 norm_pressure
             ))
         return norm_coords
-
-   
-    def plot_task(self, subdir=None, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
-        final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
-        final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
-        canvases = {
-            name: (
-                np.ones((final_h, final_w), dtype=np.float64) * 255.0 if name == 'stroke'
-                else np.zeros((final_h, final_w), dtype=np.float64)
-            )
-            for name in ['stroke', 'timestamp', 'azimuth', 'altitude', 'pressure']
-        }
-        for letters_set in self.letters_sets_list:
-            for stroke in letters_set.strokes_list:
-                stroke_x_list = stroke.get_x_coordinates_list()
-                stroke_y_list = stroke.get_y_coordinates_list()
-                normalized_x = [x - self.min_vals['x_surface'] for x in stroke_x_list]
-                normalized_y = [y - self.min_vals['y_surface'] for y in stroke_y_list]
-                normalized_timestamp = stroke.getTimestamps()
-                normalized_azimuths = stroke.getAzimuths()
-                altitudes = stroke.getAltitudes()
-                normalized_altitudes = normalize(altitudes)
-                pressures = stroke.getPressures()
-                normalized_pressures = normalize(pressures)
-                for i in range(len(stroke_x_list) -1):
-                    darkening_factor = min_dark_factor + (max_dark_factor - min_dark_factor) * (1 - normalized_pressures[i])
-                    thickness_factor = min_thickness + (max_thickness - min_thickness) * (1 - normalized_altitudes[i])
-                    pixels = bresenham_line(
-                        normalized_x[i],
-                        normalized_y[i],
-                        normalized_x[i+1],
-                        normalized_y[i+1],
-                        height=final_h,
-                        width=final_w,
-                        thickness=int(thickness_factor),
-                        )
-                    for y, x in pixels:
-                        canvases['stroke'][y, x] = darkening_factor
-                        canvases['timestamp'][y, x] = normalized_timestamp[i]
-                        canvases['azimuth'][y, x] = normalized_azimuths[i]
-                        canvases['altitude'][y, x] = normalized_altitudes[i]
-                        canvases['pressure'][y, x] = normalized_pressures[i]
-
-        output_path = os.path.join("tareas_generadas", subdir)
-        os.makedirs(output_path, exist_ok=True)
-        filename = os.path.join(output_path, f"tarea{self.task_number}.png")
-        stroke_canvas = canvases['stroke']
-        stroke_canvas = cv2.flip(stroke_canvas, 0)
-        stroke_canvas_uint8 = stroke_canvas.astype(np.uint8)
-        negative_img = 255 - stroke_canvas_uint8
-        canvases['stroke'] = (255 - stroke_canvas) / 255.0
-        #canvas_resized = cv2.resize(canvas_uint8, dsize=None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-        png_img = (canvases['stroke'] * 255).astype(np.uint8)
-        cv2.imwrite(filename, png_img)
-        self.setCanvases(canvases)
-
     
     def generate_prediction_results(self):
         """Genera las predicciones a nivel de trazo,

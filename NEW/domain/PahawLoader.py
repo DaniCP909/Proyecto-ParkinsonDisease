@@ -1,9 +1,11 @@
 import os
 import pandas
-import pickle
+import cv2
 
 from domain.Stroke import Stroke
 from domain.Task import Task
+from domain.RepresentationType import RepresentationType
+import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -113,21 +115,24 @@ class PahawLoader:
                 subjects_pd_status_years_dict[subject_id] = pd_status_years
 
                 if task_strokes_list:    #si hay trazo
-                    cache_path = os.path.join(cache_dir, f"{subject_id}_task{task_number}.pkl")
 
-                    if os.path.exists(cache_path):
-                        with open(cache_path, "rb") as f:
-                            new_task = pickle.load(f)
-                    else:
-                        new_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0])
-                        new_task.plot_task(subdir=f"sujeto{subject_id}_GT{subjects_pd_status_list[subject_i]}")
+                    new_simple_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.SIMPLE_STROKE)
+                    new_simple_task.generate_data()
 
-                        with open(cache_path, "wb") as f:
-                            pickle.dump(new_task, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    new_enhanced_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ENHANCED_STROKE)
+                    new_enhanced_task.generate_data()
+
+                    new_multichannel_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.MULTICHANNEL)
+                    new_multichannel_task.generate_data()
+
+                    debug = (new_enhanced_task.data * 255).astype(np.uint8)
+
+                    cv2.imwrite(f"tareas_generadas/img_{subject_id}_{task_number}.png", debug)
+
                         #print(f"[CACHE] Guardada tarea {task_number} del sujeto {subject_id}")
                     if subject_id not in subjects_tasks_dict:
                         subjects_tasks_dict[subject_id] = {}
-                    subjects_tasks_dict[subject_id][task_number] = new_task
+                    subjects_tasks_dict[subject_id][task_number] = new_enhanced_task
                 else:
                     print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
             subject_i += 1
