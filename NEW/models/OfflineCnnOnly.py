@@ -57,7 +57,7 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
 
     correct = 0
 
-    for batch_idx, (data, target, _, idx) in enumerate(train_loader):
+    for batch_idx, (data, target, id, idx) in enumerate(train_loader):
         # data shape: (B, T, 1, H, W), target shape: (B,)
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -103,7 +103,7 @@ def validate(model, device, validate_loader, validate_losses):
     all_pd_neur_probs = []
     
     with torch.no_grad():
-        for batch_idx, (data, target, _, idx) in enumerate(validate_loader):
+        for batch_idx, (data, target, id, idx) in enumerate(validate_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
             validate_loss += F.cross_entropy(output, target, reduction='sum').item()

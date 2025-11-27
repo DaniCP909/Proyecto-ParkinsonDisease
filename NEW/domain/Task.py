@@ -60,7 +60,7 @@ class Task:
         self.data = None
         self.data_cache_path = None
 
-    def generate_data(self, final_h, final_w):
+    def generate_data(self, final_h, final_w, task1 = False):
         """
         Generates representation data.
         For SIMPLE_STROKE and ENHANCED_STROKE stores/read PNG from disk.
@@ -85,8 +85,11 @@ class Task:
 
             result = self._rep_simple_stroke()
             normalized = fit_into_normalized_canvas(result, final_h, final_w)
-            cr_result = clean_and_refill(normalized)
-            write_img = (cr_result * 255).astype(np.uint8)
+            if not task1:
+                cr_result = clean_and_refill(normalized)
+                write_img = (cr_result * 255).astype(np.uint8)
+            else:
+                write_img = (normalized * 255).astype(np.uint8)
             cv2.imwrite(cache_simple, write_img)
             self.data = result
             self.data_cache_path = cache_simple
@@ -100,8 +103,11 @@ class Task:
                 return
             result = self._rep_enhanced_stroke()
             normalized = fit_into_normalized_canvas(result, final_h, final_w)
-            cr_result = clean_and_refill(normalized)
-            write_img = (result * 255).astype(np.uint8)
+            if not task1:
+                cr_result = clean_and_refill(normalized)
+                write_img = (cr_result * 255).astype(np.uint8)
+            else:
+                write_img = (normalized * 255).astype(np.uint8)
 
             cv2.imwrite(cache_enhanced, write_img)
             self.data = result
@@ -258,6 +264,9 @@ class Task:
 
     def getAllCordinates(self):
         return np.array(self.all_coords, dtype=np.float32)
+    
+    def getRepType(self):
+        return self.rep_type
 
     def _get_letters_sets(self, strokes_list: list[Stroke]) -> list[LetterSet]:
         """Recibe una lista de trazos y los agrupa en varios conjuntos de letras."""

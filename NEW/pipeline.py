@@ -2,8 +2,8 @@
 import torch
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, Subset
-from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
-#from models.OfflineCnnOnly import OfflineCnnOnly, train, validate
+#from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
+from models.OfflineCnnOnly import OfflineCnnOnly, train, validate
 from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
 from datasets.PahawOfflineSimWindowDataset import PahawOfflineSimWindowDataset
 import os
@@ -11,6 +11,8 @@ import cv2
 import numpy as np
 import csv
 from datetime import datetime
+
+from domain.RepresentationType import RepresentationType
 
 wrong_predicts = {
     "2": [5, 16, 17, 21, 24, 27, 31, 32, 35, 36, 38, 39, 46, 52, 56, 60, 64, 65, 70, 71, 72], #batch_size=2
@@ -74,27 +76,27 @@ def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis
         #    escritor.writerow([a, b, c, d])
         for idx, pred, target, conf in zip(idx_list, preds, targets, confidences):
             # filenames[idx] debe devolver el nombre de archivo correspondiente al índice
-            fname = filenames[idx]  # 🔑 uso de idx_list para mapear
+            fname = filenames[idx]  
             escritor.writerow([fname, pred, target, conf])
     
     print(f"Archivo '{full_path}' creado con éxito.")
     
 
 
-def run_pipeline(train_ids, validate_ids, train_data, validate_data, args=None, device=None, train_kargs=None, validate_kargs=None, writer=None, task=2):
-    train_dataset = PahawOfflineSimDataset(train_data, device=device, patch_w=200, stepsize=30)
-    val_dataset = PahawOfflineSimDataset(validate_data, device=device, patch_w=200, stepsize=30)
+def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=None, validate_kargs=None, writer=None, task_nums=[2]):
+    train_dataset = PahawOfflineSimDataset(train_data, None, 200, 2, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
+    val_dataset = PahawOfflineSimDataset(validate_data, None, 200, 2, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
 
-    patches_tensor, label, _, _ = train_dataset[0]
-    print(f"SHAPE: {patches_tensor.shape}")
-
-    train_filenames = save_dataset_images(dataset=train_dataset, train_validate="train", task_num=task, window=False)
-    val_filenames = save_dataset_images(dataset=val_dataset, train_validate="validate", task_num=task, window=False)
-
-    print(f"LEN train: {len(train_dataset)}")
-    print(f"LEN validate: {len(val_dataset)}")
-    filtered_train_dataset = Subset(train_dataset, [i for i in range(len(train_dataset)) if i not in wrong_predicts[f"{task}"]])
-    filtered_validate_dataset = Subset(val_dataset, [i for i in range(len(val_dataset)) if i not in wrong_predicts[f"{task}"]])
+#    patches_tensor, label, _, _ = train_dataset[0]
+#    print(f"SHAPE: {patches_tensor.shape}")
+#
+#    train_filenames = save_dataset_images(dataset=train_dataset, train_validate="train", task_num=task, window=False)
+#    val_filenames = save_dataset_images(dataset=val_dataset, train_validate="validate", task_num=task, window=False)
+#
+#    print(f"LEN train: {len(train_dataset)}")
+#    print(f"LEN validate: {len(val_dataset)}")
+#    filtered_train_dataset = Subset(train_dataset, [i for i in range(len(train_dataset)) if i not in wrong_predicts[f"{task}"]])
+#    filtered_validate_dataset = Subset(val_dataset, [i for i in range(len(val_dataset)) if i not in wrong_predicts[f"{task}"]])
 
 #    # Comprobación de igualdad entre train y validate (overfit dataset)
 #    train_items = [(task, label) for task, label in train_data]  # tu lista original
@@ -119,7 +121,7 @@ def run_pipeline(train_ids, validate_ids, train_data, validate_data, args=None, 
     train_losses, validate_losses, accuracy_history = [], [], []
     train_counter, validate_counter = [], []
 
-    model = OfflineCnnLstm().to(device)
+    model = OfflineCnnOnly().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
@@ -137,11 +139,11 @@ def run_pipeline(train_ids, validate_ids, train_data, validate_data, args=None, 
             writer.add_scalar("Accuracy", acc, epoch)
         scheduler.step()
 
-    errores = [idx for idx, (p, t) in enumerate(zip(train_preds, train_targets)) if p != t]
+#    errores = [idx for idx, (p, t) in enumerate(zip(train_preds, train_targets)) if p != t]
+#
+#    print("Fallos en índices:", errores)
 
-    print("Fallos en índices:", errores)
-
-    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_confidences, task_num=task, train_val="train", model="CnnOnly", idx_list=train_idxs)
-    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_confidences, task_num=task, train_val="validate", model="CnnOnly", idx_list=val_idxs)
+#    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_confidences, task_num=task, train_val="train", model="CnnOnly", idx_list=train_idxs)
+#    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_confidences, task_num=task, train_val="validate", model="CnnOnly", idx_list=val_idxs)
 
     return model, accuracy_history, train_losses, validate_losses

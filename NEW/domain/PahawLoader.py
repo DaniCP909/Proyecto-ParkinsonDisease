@@ -5,6 +5,7 @@ import cv2
 from domain.Stroke import Stroke
 from domain.Task import Task
 from domain.RepresentationType import RepresentationType
+from domain.Patient import Patient
 import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,6 +19,7 @@ ALTITUDE = 5
 PRESSURE = 6
 
 class PahawLoader:
+    VALID_TASK_NUMS = tuple(range(1,9))
     """
     Loads PaHaW database organized with domain subclasses.
     Returns 2 dictionaries:
@@ -28,11 +30,14 @@ class PahawLoader:
     def __init__(
             self,
     ):
-        self.subjects_pd_status_years_dict = {}
-        self.subject_tasks_dict = {}
+        #self.subjects_pd_status_years_dict = {}
+        #self.subject_tasks_dict = {}
+        self.patients_dicts = {}
 
-        self.global_max_x = 0
-        self.global_max_y = 0
+        self.global_max_w = 0
+        self.global_max_h = 0
+        self.global_max_w_task1 = 0
+        self.global_max_h_task1 = 0
 
         #CACHE
         cache_dir = "cache"
@@ -61,8 +66,9 @@ class PahawLoader:
         )
 
         #Fill dicts
-        subjects_pd_status_years_dict = {}
-        subjects_tasks_dict = {}
+        #subjects_pd_status_years_dict = {}
+        #subjects_tasks_dict = {}
+        patients_dict = {}
         subject_i = 0
         while subject_i < len(subjects_id_list):
             subject_id = subjects_id_list[subject_i]
@@ -72,7 +78,9 @@ class PahawLoader:
             )
             os.makedirs(os.path.join("generated_tasks", f"subject{subject_id}_GT{subjects_pd_status_list[subject_i]}"), exist_ok=True)
 
-            for task_number in range(2,9):
+            new_patient = Patient(subject_id, pd_status_years[0], pd_status_years[1])
+
+            for task_number in range(1,9):
                 task_file_path_mid = os.path.join(
                     f"{subject_id:05d}", f"{subject_id:05d}__{task_number}"
                 )
@@ -115,53 +123,92 @@ class PahawLoader:
                 else:
                     print(f"Archivo no encontrado: {task_file_path}, se omite.")
 
-                subjects_pd_status_years_dict[subject_id] = pd_status_years
+                #subjects_pd_status_years_dict[subject_id] = pd_status_years
 
                 if task_strokes_list:    #si hay trazo
 
                     new_simple_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.SIMPLE_STROKE)
+                    new_patient.addTask(new_simple_task)
                     #new_simple_task.generate_data()
 
-                    if new_simple_task.getWidth() > self.global_max_x:
-                        self.global_max_x = new_simple_task.getWidth()
+                    if task_number == 1:
+                        if new_simple_task.getWidth() > self.global_max_w_task1:
+                            self.global_max_w_task1 = new_simple_task.getWidth()
 
-                    if new_simple_task.getHeight() > self.global_max_y:
-                        self.global_max_y = new_simple_task.getHeight()
+                        if new_simple_task.getHeight() > self.global_max_h_task1:
+                            self.global_max_h_task1 = new_simple_task.getHeight()
+                    else:
+                        if new_simple_task.getWidth() > self.global_max_w:
+                            self.global_max_w = new_simple_task.getWidth()
 
-                    #new_enhanced_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ENHANCED_STROKE)
+                        if new_simple_task.getHeight() > self.global_max_h:
+                            self.global_max_h = new_simple_task.getHeight()
+
+                    new_enhanced_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ENHANCED_STROKE)
+                    new_patient.addTask(new_enhanced_task)
                     #new_enhanced_task.generate_data()
 
-                    #new_multichannel_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.MULTICHANNEL)
+                    new_multichannel_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.MULTICHANNEL)
+                    new_patient.addTask(new_multichannel_task)
                     #new_multichannel_task.generate_data()
+
+                    new_online_signal_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ONLINE_SIGNAL)
+                    new_patient.addTask(new_online_signal_task)
+
+                    patients_dict[subject_id] = new_patient
 
                     #debug = (new_enhanced_task.data * 255).astype(np.uint8)
 
                     #cv2.imwrite(f"tareas_generadas/img_{subject_id}_{task_number}.png", debug)
 
                         #print(f"[CACHE] Guardada tarea {task_number} del sujeto {subject_id}")
-                    if subject_id not in subjects_tasks_dict:
-                        subjects_tasks_dict[subject_id] = {}
-                    subjects_tasks_dict[subject_id][task_number] = new_simple_task
+                    #if subject_id not in subjects_tasks_dict:
+                    #    subjects_tasks_dict[subject_id] = {}
+                    #subjects_tasks_dict[subject_id][task_number] = new_simple_task
                 else:
                     print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
             subject_i += 1
         #print(list(zip(subjects_id_list, subjects_pd_status_list)))
         #print(subjects_pd_status_years_dict)
 
-        print(f"MEDIDAS FINALES: {self.global_max_x}, {self.global_max_y}")
+        print(f"MEDIDAS FINALES: {self.global_max_w}, {self.global_max_h}")
 
-        subject_ii = 0
-        while subject_ii < len(subjects_id_list):
-            subject_id = subjects_id_list[subject_ii]
-            for task_number in range(2,9):
-                task = subjects_tasks_dict[subject_id].get(task_number)
-                if task is not None:
-                    task.generate_data(self.global_max_y, self.global_max_x)
-            subject_ii += 1
+        #subject_ii = 0
+        #while subject_ii < len(subjects_id_list):
+        #    subject_id = subjects_id_list[subject_ii]
+        #    for task_number in range(2,9):
+        #        task = subjects_tasks_dict[subject_id].get(task_number)
+        #        if task is not None:
+        #            task.generate_data(self.global_max_h, self.global_max_w)
+        #    subject_ii += 1
+        for patient_id, patient in patients_dict.items():
+            tasks_lists_dict = patient.getTasksListsDict()
+            for key in tasks_lists_dict.keys():
+                tasks_lists = tasks_lists_dict[key]
+                for i in range(len(tasks_lists)):
+                    if i == 0:
+                        tasks_lists[i].generate_data(self.global_max_h_task1, self.global_max_w_task1, task1=True)
+                    else:
+                        tasks_lists[i].generate_data(self.global_max_h, self.global_max_w)
+                #print(f"Paciente {patient_id} len {key}: {len(tasks_lists)}")
 
-        self.subjects_pd_status_years_dict = subjects_pd_status_years_dict
-        self.subjects_tasks_dict = subjects_tasks_dict
+        #self.subjects_pd_status_years_dict = subjects_pd_status_years_dict
+        #self.subjects_tasks_dict = subjects_tasks_dict
+        self.patients_dicts = patients_dict
 
 
     def load(self):
-        return self.subjects_pd_status_years_dict, self.subjects_tasks_dict
+        return self.patients_dicts
+    
+    def loadCustomSubset(self, rep_type: RepresentationType, task_nums: list[int]):
+        invalid = set(task_nums) - set(self.VALID_TASK_NUMS)
+        if invalid:
+            raise ValueError(f"Invalid task {invalid}")
+        
+        task_nums = sorted(task_nums)
+        
+        subset = []
+        for t in task_nums:
+            for patient in self.patients_dicts.values():
+                subset.append(patient.getTaskByTypeAndNum(rep_type, t))
+        return subset
