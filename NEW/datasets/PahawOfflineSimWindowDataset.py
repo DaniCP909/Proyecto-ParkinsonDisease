@@ -5,44 +5,70 @@ from utils.CustomMorphOps import fit_into_normalized_canvas, clean_and_refill
 from utils.PatchesOps import patches_per_image, patch_generator
 import cv2
 
+from domain.RepresentationType import RepresentationType
+from domain.Patient import Patient
+from utils.PatchesOps import patches_per_image, patch_generator
 
 class PahawOfflineSimWindowDataset(Dataset):
 
-    def __init__(self, data: list[tuple], device, transform=None, patch_w=200, stepsize=2, task_num=2):
-        zip_tasks, zip_labels = zip(*data)
-        self.tasks = list(zip_tasks)
-        self.labels = list(zip_labels)
-        self.transform = transform
-        self.device = device
+    def __init__(
+            self, 
+            patients_dict: dict[int, Patient], 
+            transform=None, 
+            patch_w=150, 
+            stepsize=75, 
+            task_nums=[2],
+            rep_type: RepresentationType=RepresentationType.SIMPLE_STROKE,
+            target_mode = "binary"
+            ):
+        self.patients = list(patients_dict.values())  
+        self.rep_type = rep_type
+        self.task_nums = task_nums
+        self.target_mode = target_mode
+        self.transform=transform
         self.patch_w = patch_w
-        self.setpsize = stepsize
-        self.max_h = float('-inf')
-        self.max_w = float('-inf')
-        self.task_num=task_num
-        for task in self.tasks:
-            self.max_h = max(self.max_h, task.getHeight())
-            self.max_w = max(self.max_w, task.getWidth())
+        self.stepsize = stepsize
+
+        # Precomputamos todas las tareas
+        self.samples = []
+        for patient in self.patients:
+            for t in task_nums:
+                try:
+                    task = patient.getTaskByTypeAndNum(rep_type, t)
+                    self.samples.append((patient, task))
+                except:
+                    pass  # si falta la tarea (caso raro)
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        image = self.tasks[idx].getCanvases()['stroke']
-        label = self.labels[idx]
+        patient, task = self.samples[idx]
 
-        if self.transform:
-            image = self.transform(image)
+        img = task.data
 
-        fit_image = fit_into_normalized_canvas(image, self.max_h, self.max_w)
+        patches_list = patch_generator(
+            img,
+            n_patches=patches_per_image(img.shape[1], self.patch_w, self.stepsize),
+            patch_height=img.shape[0],
+            patch_width=self.patch_w,
+            stepsize=self.stepsize
+        )
+        patches_np = np.stack(patches_list, axis=0)
+        patches = torch.from_numpy(patches_np).float()
 
-        clean_img = clean_and_refill(fit_image)
+        patches = patches.unsqueeze(1)
 
-        n_patches = patches_per_image(clean_img.shape[1], patch_width=self.patch_w, stepsize=self.setpsize)
-        patches = patch_generator(clean_img, device=self.device, n_patches=n_patches,
-                                  patch_height=clean_img.shape[0],
-                                  patch_width=self.patch_w,
-                                  stepsize=self.setpsize)
-        patches_tensor = torch.tensor(np.stack(patches), dtype=torch.float32).unsqueeze(1)
-        return patches_tensor, label
+        # ---- TARGET
+        if self.target_mode == "binary":
+            y = torch.tensor(patient.pd_status, dtype=torch.long)
+        elif self.target_mode == "severity":
+            y = torch.tensor(min(patient.pd_years / 20.0, 1.0), dtype=torch.float32)
+        elif self.target_mode == "multi_lable":
+            y = torch.tensor(
+                [float(patient.pd_status), patient.pd_years, min(patient.pd_years / 20.0, 1.0)],
+                dtype=torch.float32
+                )
+        return patches, y, patient.id, idx, task.task_number
     
 

@@ -27,3 +27,9 @@ class PahawSplitter:
         val_dict = {p.id: p for p in val}
 
         return train_dict, val_dict
+    
+    def custom_split(self, train_ids: list[int], val_ids: list[int]):
+        train_dict = {pid: self.patients[pid] for pid in train_ids}
+        val_dict = {pid: self.patients[pid] for pid in val_ids}
+
+        return train_dict, val_dict

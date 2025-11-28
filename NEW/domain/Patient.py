@@ -55,3 +55,6 @@ class Patient:
             raise ValueError(f"No task {task_num} for subject {self.id}")
         
         return tasks[index]
+    
+    def getTaskNumbers(self):
+        return [x for x in range(len(self.tasks_lists_dict[RepresentationType.SIMPLE_STROKE]))]

@@ -113,7 +113,7 @@ def main():
 #
 #    print(f"Longitud train {len(train_label_img)} Longitud validate {len(validate_label_img)}")
 #
-    model, accuracy_history, train_losses, validate_losses = run_pipeline(train, val, args, device, train_kwargs, validate_kargs, task_nums=[6,7]) 
+    model, accuracy_history, train_losses, validate_losses = run_pipeline(train, val, args, device, train_kwargs, validate_kargs, task_nums=[6,7,8]) 
 #
     elapsed_train = time() - t0_train
     print(f"Model trained in {(elapsed_train):.2f}s")

@@ -34,19 +34,34 @@ class OfflineCnnLstm(nn.Module):
         )
 
     def forward(self, x):
-        # Si ya no hay dimensión temporal
-        if x.ndim == 4:  # (B, 1, H, W)
+        # x: (B, T, 1, H, W)
+
+        if x.ndim == 4:
+            # Caso viejo sin secuencia
             x = self.cnn(x).view(x.size(0), -1)
             x = self.cnn_proj(x)
             return self.fc(x)
-        else:
-            # Si accidentalmente llega (B, T, 1, H, W)
-            B, T, C, H, W = x.shape
-            x = x.view(B * T, C, H, W)
-            x = self.cnn(x).view(B * T, -1)
-            x = self.cnn_proj(x)
-            x = x.view(B, T, -1).mean(dim=1)
-            return self.fc(x)
+
+        # Secuencia de patches
+        B, T, C, H, W = x.shape
+
+        # Aplanamos batch y tiempo
+        x = x.view(B*T, C, H, W)
+
+        # CNN → features
+        x = self.cnn(x).view(B*T, -1)
+        x = self.cnn_proj(x)
+
+        # Restaurar secuencia (B, T, feature_dim)
+        x = x.view(B, T, self.feature_dim)
+
+        # LSTM
+        out, (h_n, c_n) = self.lstm(x)
+
+        # Usamos el último hidden state
+        last_hidden = h_n[-1]
+
+        return self.fc(last_hidden)
 
 def train(args, model, device, train_loader, optimizer, epoch, train_lossess, train_counter):
     model.train()
@@ -55,10 +70,11 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
     all_targets = []
     all_pd_neur_probs = []
     all_idx = []
+    tasks_nums = []
 
     correct = 0
 
-    for batch_idx, (data, target, _, idx) in enumerate(train_loader):
+    for batch_idx, (data, target, _, idx, t_number) in enumerate(train_loader):
         # data shape: (B, T, 1, H, W), target shape: (B,)
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -74,6 +90,8 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
         all_targets.extend(target.cpu().numpy())
 
         all_idx.extend(idx.cpu().numpy())
+
+        tasks_nums.append(t_number)
 
         loss = F.cross_entropy(output, target, reduction='mean')
         loss.backward()
@@ -91,7 +109,7 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
     print('\nTrain Accuracy: {}/{} ({:.0f}%)\n'.format(
         correct, len(train_loader.dataset),
         100. * correct / len(train_loader.dataset)))
-    return all_predictions, all_targets, all_pd_neur_probs, all_idx
+    return all_predictions, all_targets, all_pd_neur_probs, all_idx, tasks_nums
     
 def validate(model, device, validate_loader, validate_losses):
     model.eval()
@@ -102,9 +120,11 @@ def validate(model, device, validate_loader, validate_losses):
     all_targets = []
     all_idx = []
     all_pd_neur_probs = []
+
+    tasks_nums = []
     
     with torch.no_grad():
-        for batch_idx, (data, target, _, idx) in enumerate(validate_loader):
+        for batch_idx, (data, target, _, idx, t_number) in enumerate(validate_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
             validate_loss += F.cross_entropy(output, target, reduction='sum').item()
@@ -119,6 +139,8 @@ def validate(model, device, validate_loader, validate_losses):
             start = batch_idx * validate_loader.batch_size
             all_idx.extend(idx.cpu().numpy())
 
+            tasks_nums.append(t_number)
+
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     validate_loss /= len(validate_loader.dataset)
@@ -130,5 +152,5 @@ def validate(model, device, validate_loader, validate_losses):
 
     accuracy = 100. * correct / len(validate_loader.dataset)
 
-    return all_predictions, all_targets, accuracy, all_pd_neur_probs, all_idx
+    return all_predictions, all_targets, accuracy, all_pd_neur_probs, all_idx, tasks_nums
 

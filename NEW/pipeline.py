@@ -1,9 +1,9 @@
 # pipeline.py
 import torch
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader, Subset
-#from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
-from models.OfflineCnnOnly import OfflineCnnOnly, train, validate
+from torch.utils.data import Dataset, DataLoader, Subset
+from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
+#from models.OfflineCnnOnly import OfflineCnnOnly, train, validate
 from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
 from datasets.PahawOfflineSimWindowDataset import PahawOfflineSimWindowDataset
 import os
@@ -25,12 +25,12 @@ wrong_predicts = {
 }
 
 
-def save_dataset_images(path=None, dataset: PahawOfflineSimDataset=None, train_validate=None, task_num=2, window=False):
+def save_dataset_images(path=None, dataset: Dataset=None, train_validate=None, window=False, data_dict=None):
     if dataset is None:
         print("Dataset not provided.")
         return
     if path is None:
-        path = f"/home/dcorredor/github/Proyecto-ParkinsonDisease/NEW/dataset_images/{task_num}"
+        path = f"/home/dcorredor/github/Proyecto-ParkinsonDisease/NEW/dataset_images"
     os.makedirs(path, exist_ok=True)
 
 
@@ -38,7 +38,12 @@ def save_dataset_images(path=None, dataset: PahawOfflineSimDataset=None, train_v
 
     for i in range(len(dataset)):
         if not window:
-            img, label, real_id, idx = dataset[i]
+            _, label, real_id, idx, t_number = dataset[i]
+
+            patient = data_dict[real_id]
+            if t_number in patient.getTaskNumbers():
+                task = patient.getTaskByTypeAndNum(dataset.rep_type, t_number)
+            img = task.data
 
             if isinstance(img, torch.Tensor):
                 img = img.detach().cpu().numpy()
@@ -46,13 +51,13 @@ def save_dataset_images(path=None, dataset: PahawOfflineSimDataset=None, train_v
                 img = img.squeeze(0)
             img_uint8 = (img * 255).clip(0, 255).astype(np.uint8)
 
-        filename = os.path.join(path, f"{train_validate}_img_idx{i:04d}_label_{label}_id{real_id}.png")
+        filename = os.path.join(path, f"{train_validate}_img_idx{i:04d}_label_{label}_id{real_id}_task{t_number}.png")
         images_filename[idx] = filename
         if not window:
             cv2.imwrite(filename, img_uint8)
     return images_filename
 
-def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis", task_num=None, train_val="train", model=None, idx_list=[]):
+def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis", tasks_nums=None, train_val="train", model=None, idx_list=[]):
     """
     Creates a CSV with train and validate results
     filename, target, predict, confidence
@@ -61,12 +66,11 @@ def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis
         raise ValueError("List parameters have different length")
     
     date = datetime.now()
-    task_path = os.path.join(path, f"{task_num}")
 
-    os.makedirs(task_path, exist_ok=True)
+    os.makedirs(path, exist_ok=True)
 
-    filename = f"task{task_num}_{model}_{train_val}_{date}.csv"
-    full_path = os.path.join(task_path, filename)
+    filename = f"{model}_{train_val}_{date}.csv"
+    full_path = os.path.join(path, filename)
     with open(full_path, mode="w", newline="", encoding="utf-8") as archivo:
         escritor = csv.writer(archivo)
         
@@ -84,14 +88,14 @@ def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis
 
 
 def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=None, validate_kargs=None, writer=None, task_nums=[2]):
-    train_dataset = PahawOfflineSimDataset(train_data, None, 200, 2, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
-    val_dataset = PahawOfflineSimDataset(validate_data, None, 200, 2, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
+    train_dataset = PahawOfflineSimWindowDataset(train_data, None, 250, 75, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
+    val_dataset = PahawOfflineSimWindowDataset(validate_data, None, 150, 75, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
 
 #    patches_tensor, label, _, _ = train_dataset[0]
 #    print(f"SHAPE: {patches_tensor.shape}")
 #
-#    train_filenames = save_dataset_images(dataset=train_dataset, train_validate="train", task_num=task, window=False)
-#    val_filenames = save_dataset_images(dataset=val_dataset, train_validate="validate", task_num=task, window=False)
+    train_filenames = save_dataset_images(dataset=train_dataset, train_validate="train", window=False, data_dict=train_data)
+    val_filenames = save_dataset_images(dataset=val_dataset, train_validate="validate", window=False, data_dict=validate_data)
 #
 #    print(f"LEN train: {len(train_dataset)}")
 #    print(f"LEN validate: {len(val_dataset)}")
@@ -121,18 +125,18 @@ def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=
     train_losses, validate_losses, accuracy_history = [], [], []
     train_counter, validate_counter = [], []
 
-    model = OfflineCnnOnly().to(device)
+    model = OfflineCnnLstm().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     # baseline
-    _, _, acc, _, val_idxs = validate(model, device, val_loader, validate_losses)
+    _, _, acc, _, val_idxs, _ = validate(model, device, val_loader, validate_losses)
     accuracy_history.append(acc)
     validate_counter.append(0)
 
     for epoch in range(1, args.epochs + 1):
-        train_preds, train_targets, train_confidences, train_idxs = train(args, model, device, train_loader, optimizer, epoch, train_losses, train_counter)
-        val_preds, val_targets,  acc, val_confidences, val_idxs = validate(model, device, val_loader, validate_losses)
+        train_preds, train_targets, train_confidences, train_idxs, task_nums = train(args, model, device, train_loader, optimizer, epoch, train_losses, train_counter)
+        val_preds, val_targets,  acc, val_confidences, val_idxs, task_nums = validate(model, device, val_loader, validate_losses)
         accuracy_history.append(acc)
         validate_counter.append(epoch * len(train_loader.dataset))
         if writer is not None:
@@ -143,7 +147,7 @@ def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=
 #
 #    print("Fallos en índices:", errores)
 
-#    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_confidences, task_num=task, train_val="train", model="CnnOnly", idx_list=train_idxs)
-#    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_confidences, task_num=task, train_val="validate", model="CnnOnly", idx_list=val_idxs)
+    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_confidences, train_val="train", model="CnnOnly", idx_list=train_idxs)
+    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_confidences, train_val="validate", model="CnnOnly", idx_list=val_idxs)
 
     return model, accuracy_history, train_losses, validate_losses
