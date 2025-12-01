@@ -182,14 +182,14 @@ class PahawLoader:
         #            task.generate_data(self.global_max_h, self.global_max_w)
         #    subject_ii += 1
         for patient_id, patient in patients_dict.items():
-            tasks_lists_dict = patient.getTasksListsDict()
-            for key in tasks_lists_dict.keys():
-                tasks_lists = tasks_lists_dict[key]
-                for i in range(len(tasks_lists)):
-                    if i == 0:
-                        tasks_lists[i].generate_data(self.global_max_h_task1, self.global_max_w_task1, task1=True)
+            tasks_dicts_dict = patient.getTasksListsDict()
+            for rep_key in tasks_dicts_dict.keys():
+                for task_key in tasks_dicts_dict[rep_key].keys():
+                    task = tasks_dicts_dict[rep_key][task_key]
+                    if task_key == 1:
+                        task.generate_data(self.global_max_h_task1, self.global_max_w_task1, task1=True)
                     else:
-                        tasks_lists[i].generate_data(self.global_max_h, self.global_max_w)
+                        task.generate_data(self.global_max_h, self.global_max_w)
                 #print(f"Paciente {patient_id} len {key}: {len(tasks_lists)}")
 
         #self.subjects_pd_status_years_dict = subjects_pd_status_years_dict

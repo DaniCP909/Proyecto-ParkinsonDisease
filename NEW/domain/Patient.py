@@ -9,11 +9,11 @@ class Patient:
         self.pd_years = patient_disease_years
 
 
-        self.tasks_lists_dict = {
-            RepresentationType.SIMPLE_STROKE: [],
-            RepresentationType.ENHANCED_STROKE: [],
-            RepresentationType.MULTICHANNEL: [],
-            RepresentationType.ONLINE_SIGNAL: [],
+        self.tasks_dicts_dict = {
+            RepresentationType.SIMPLE_STROKE: {},
+            RepresentationType.ENHANCED_STROKE: {},
+            RepresentationType.MULTICHANNEL: {},
+            RepresentationType.ONLINE_SIGNAL: {},
         }
         
 
@@ -37,24 +37,20 @@ class Patient:
 
     def addTask(self, new_task: Task):
         rep_type = new_task.getRepType()
-        if rep_type not in self.tasks_lists_dict:
+        if rep_type not in self.tasks_dicts_dict:
             raise ValueError("Unknown representation type")
-        self.tasks_lists_dict[rep_type].append(new_task)
+        self.tasks_dicts_dict[rep_type][new_task.task_number] = new_task
 
     def getTasksListsDict(self):
-        return self.tasks_lists_dict
+        return self.tasks_dicts_dict
         
     def getTasksByType(self, rep_type: RepresentationType):
-        return self.tasks_lists_dict[rep_type]
+        return self.tasks_dicts_dict[rep_type]
     
     def getTaskByTypeAndNum(self, rep_type: RepresentationType, task_num: int):
-        tasks = self.tasks_lists_dict[rep_type]
-        index = task_num - 1
+        task = self.tasks_dicts_dict[rep_type][task_num]
 
-        if index < 0 or index >= len(tasks):
-            raise ValueError(f"No task {task_num} for subject {self.id}")
-        
-        return tasks[index]
+        return task
     
     def getTaskNumbers(self):
-        return [x for x in range(len(self.tasks_lists_dict[RepresentationType.SIMPLE_STROKE]))]
+        return list(self.tasks_dicts_dict[RepresentationType.SIMPLE_STROKE].keys())

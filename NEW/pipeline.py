@@ -88,7 +88,7 @@ def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis
 
 
 def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=None, validate_kargs=None, writer=None, task_nums=[2]):
-    train_dataset = PahawOfflineSimWindowDataset(train_data, None, 250, 75, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
+    train_dataset = PahawOfflineSimWindowDataset(train_data, None, 150, 75, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
     val_dataset = PahawOfflineSimWindowDataset(validate_data, None, 150, 75, task_nums, RepresentationType.SIMPLE_STROKE, "binary")
 
 #    patches_tensor, label, _, _ = train_dataset[0]
