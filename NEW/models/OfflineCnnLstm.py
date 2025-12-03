@@ -91,7 +91,11 @@ def train(args, model, device, train_loader, optimizer, epoch, train_lossess, tr
 
         all_idx.extend(idx.cpu().numpy())
 
-        tasks_nums.append(t_number)
+        if isinstance(t_number, torch.Tensor):
+            # t_number puede ser un tensor de varios elementos
+            tasks_nums.extend([int(x) for x in t_number.view(-1)])
+        else:
+            tasks_nums.append(int(t_number))
 
         loss = F.cross_entropy(output, target, reduction='mean')
         loss.backward()
@@ -139,7 +143,11 @@ def validate(model, device, validate_loader, validate_losses):
             start = batch_idx * validate_loader.batch_size
             all_idx.extend(idx.cpu().numpy())
 
-            tasks_nums.append(t_number)
+            if isinstance(t_number, torch.Tensor):
+                # t_number puede ser un tensor de varios elementos
+                tasks_nums.extend([int(x) for x in t_number.view(-1)])
+            else:
+                tasks_nums.append(int(t_number))
 
             correct += pred.eq(target.view_as(pred)).sum().item()
 

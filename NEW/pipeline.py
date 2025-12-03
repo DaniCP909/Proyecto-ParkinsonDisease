@@ -69,7 +69,11 @@ def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis
 
     os.makedirs(path, exist_ok=True)
 
-    filename = f"{model}_{train_val}_{date}.csv"
+    tasks_str = ""
+    for tn in tasks_nums:
+        tasks_str += f"{tn}"
+
+    filename = f"tasks_{tasks_str}_{model}_{train_val}_{date}.csv"
     full_path = os.path.join(path, filename)
     with open(full_path, mode="w", newline="", encoding="utf-8") as archivo:
         escritor = csv.writer(archivo)
@@ -147,7 +151,7 @@ def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=
 #
 #    print("Fallos en índices:", errores)
 
-    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_confidences, train_val="train", model="CnnOnly", idx_list=train_idxs)
-    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_confidences, train_val="validate", model="CnnOnly", idx_list=val_idxs)
+    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_confidences, train_val="train", model="CnnOnly", idx_list=train_idxs, tasks_nums=task_nums)
+    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_confidences, train_val="validate", model="CnnOnly", idx_list=val_idxs, tasks_nums=task_nums)
 
     return model, accuracy_history, train_losses, validate_losses

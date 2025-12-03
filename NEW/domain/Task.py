@@ -87,11 +87,11 @@ class Task:
             normalized = fit_into_normalized_canvas(result, final_h, final_w)
             if not task1:
                 cr_result = clean_and_refill(normalized)
-                write_img = (cr_result * 255).astype(np.uint8)
             else:
-                write_img = (normalized * 255).astype(np.uint8)
+                cr_result = normalized
+            write_img = (cr_result * 255).astype(np.uint8)
             cv2.imwrite(cache_simple, write_img)
-            self.data = result
+            self.data = cr_result
             self.data_cache_path = cache_simple
             return
         
@@ -105,12 +105,12 @@ class Task:
             normalized = fit_into_normalized_canvas(result, final_h, final_w)
             if not task1:
                 cr_result = clean_and_refill(normalized)
-                write_img = (cr_result * 255).astype(np.uint8)
             else:
-                write_img = (normalized * 255).astype(np.uint8)
+                cr_result = normalized
+            write_img = (cr_result * 255).astype(np.uint8)
 
             cv2.imwrite(cache_enhanced, write_img)
-            self.data = result
+            self.data = cr_result
             self.data_cache_path = cache_enhanced
             return
         

@@ -49,12 +49,18 @@ def main():
     parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed (default = 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False, help='Saves current Model')
-    parser.add_argument('--task-num', type=int, default=2, metavar='N', help='Task number')
+    parser.add_argument(
+        "--tasks",
+        type=int,
+        nargs="+",
+        default=[2],
+        help="Task list to use",
+    )
 
     args = parser.parse_args()
     writer = SummaryWriter("runs/pd-detection")
 
-    task_number = args.task_num
+    task_numbers = args.tasks
 
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     use_mps = not args.no_mps and torch.backends.mps.is_available()
@@ -113,7 +119,7 @@ def main():
 #
 #    print(f"Longitud train {len(train_label_img)} Longitud validate {len(validate_label_img)}")
 #
-    model, accuracy_history, train_losses, validate_losses = run_pipeline(train, val, args, device, train_kwargs, validate_kargs, task_nums=[6,7,8]) 
+    model, accuracy_history, train_losses, validate_losses = run_pipeline(train, val, args, device, train_kwargs, validate_kargs, task_nums=task_numbers) 
 #
     elapsed_train = time() - t0_train
     print(f"Model trained in {(elapsed_train):.2f}s")
