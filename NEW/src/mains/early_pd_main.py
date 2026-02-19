@@ -20,6 +20,8 @@ import os
 import numpy as np
 import cv2
 
+import pandas as pd
+
 from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
 from models.OfflineCnnLstm import OfflineCnnLstm, train, validate
 from domain.PahawLoader import PahawLoader
@@ -35,6 +37,14 @@ from time import time
 from subset_utils import build_subsets, build_overfit_subsets
 from pipeline import run_pipeline
 
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 def main():
     parser = argparse.ArgumentParser(description='PaHaW offline training')
 
@@ -49,6 +59,8 @@ def main():
     parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed (default = 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False, help='Saves current Model')
+    parser.add_argument('--segment', type=int, default=0, metavar='N', help='segment (default = 0)')
+    parser.add_argument('--isolated', type=int, default=0, metavar='N', help='isolated patient (default = 0)')
     parser.add_argument(
         "--tasks",
         type=int,
@@ -65,7 +77,7 @@ def main():
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     use_mps = not args.no_mps and torch.backends.mps.is_available()
 
-    torch.manual_seed(args.seed)
+    set_seed(args.seed)
 
     print(f'*** Training settings: batch_size:{args.batch_size}, validate_batch_size:{args.validate_batch_size}, epochs:{args.epochs}, lr:{args.lr}, gamma:{args.gamma}, no-cuda:{args.no_cuda}, no_mps:{args.no_mps}, dry_run:{args.dry_run}, seed:{args.seed}, log_interval:{args.log_interval}, save_model:{args.save_model}')
 
@@ -76,15 +88,25 @@ def main():
     else:
         device = torch.device("cpu")
 
-    train_kwargs = {'batch_size': args.batch_size}
-    validate_kargs = {'batch_size': args.validate_batch_size}
+    train_kwargs = {
+        'batch_size': args.batch_size,
+        'shuffle': True
+    }
+    
+    validate_kwargs = {
+        'batch_size': args.validate_batch_size,
+        'shuffle': False
+    }
+    
     if use_cuda:
-        cuda_kwargs = {
+        train_kwargs.update({
             'num_workers': 2,
-            'pin_memory': True,
-            'shuffle': True}
-        train_kwargs.update(cuda_kwargs)
-        validate_kargs.update(cuda_kwargs)
+            'pin_memory': True
+        })
+        validate_kwargs.update({
+            'num_workers': 2,
+            'pin_memory': True
+        })
     
     transform = transforms.Compose([
         transforms.Normalize(mean=[0.5], std=[0.5])
@@ -92,10 +114,29 @@ def main():
 
     print(f"Device: {device}")
 
+    results_dir = "results_singletask_EPD_isolated"
+    os.makedirs(results_dir, exist_ok=True)
+    models_dir = os.path.join(results_dir, "models")
+    os.makedirs(models_dir, exist_ok=True)
+    csv_dir = os.path.join(results_dir, "history_csvs")
+    os.makedirs(csv_dir, exist_ok=True)
+
     t0_load_data = time()
 
     pahaw_loader = PahawLoader()
     patients_dict = pahaw_loader.load()
+
+    pd_early_pd_id_list = [5, 9, 10, 13, 16, 33, 36, 43, 53]
+    h_early_pd_id_list = [30, 49, 52, 67, 69, 70, 84, 87, 97]
+
+    train_epd_ids = h_early_pd_id_list[:args.isolated]
+    train_epd_ids.extend(h_early_pd_id_list[(args.isolated+1):])
+    train_epd_ids.extend(pd_early_pd_id_list)
+
+    random.Random(args.seed).shuffle(train_epd_ids)
+
+    test_epd_ids = [h_early_pd_id_list[args.isolated]]
+
 
     elapsed_load_data = time() - t0_load_data
     print(f"PaHaW data loaded and patches generated in {(elapsed_load_data):.2f}s")
@@ -103,7 +144,13 @@ def main():
     #subset = pahaw_loader.loadCustomSubset(RepresentationType.SIMPLE_STROKE, [7])
 
     splitter = PahawSplitter(patients_dict)
-    train, val = splitter.stratified_split(val_ratio=0.2)
+    train, val = splitter.custom_split(train_epd_ids, test_epd_ids)
+
+    elapsed_load_data = time() - t0_load_data
+    print(f"PaHaW data loaded and patches generated in {(elapsed_load_data):.2f}s")
+
+    #subset = pahaw_loader.loadCustomSubset(RepresentationType.SIMPLE_STROKE, [7])
+
 
     print(train)
 
@@ -119,10 +166,42 @@ def main():
 #
 #    print(f"Longitud train {len(train_label_img)} Longitud validate {len(validate_label_img)}")
 #
-    model, accuracy_history, train_losses, validate_losses = run_pipeline(train, val, args, device, train_kwargs, validate_kargs, task_nums=task_numbers) 
+    model, train_history, validate_history = run_pipeline(train, val, args, device, train_kwargs, validate_kwargs, task_nums=task_numbers)
 #
     elapsed_train = time() - t0_train
     print(f"Model trained in {(elapsed_train):.2f}s")
+
+    model_path = os.path.join(models_dir, f"best_model_patient{args.isolated}_tasks{'_'.join(map(str, task_numbers))}.pth")
+    torch.save(model.state_dict(), model_path)
+    print(f"Model saved to {model_path}")
+
+    train_csv_path = os.path.join(csv_dir, f"train_history_patient{args.isolated}_tasks{'_'.join(map(str, task_numbers))}.csv")
+    pd.DataFrame(train_history).to_csv(train_csv_path, index=False)
+    print(f"Train history saved to {train_csv_path}")
+
+    # Guardar historial de validación
+    val_csv_path = os.path.join(csv_dir, f"validate_history_patient{args.isolated}_tasks{'_'.join(map(str, task_numbers))}.csv")
+    pd.DataFrame(validate_history).to_csv(val_csv_path, index=False)
+    print(f"Validate history saved to {val_csv_path}")
+
+    import matplotlib.pyplot as plt
+    plt.figure()
+    plt.plot(train_history["epoch"], train_history["loss"], label="Train Loss")
+    plt.plot(validate_history["epoch"], validate_history["loss"], label="Validate Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.savefig(os.path.join(results_dir, f"loss_plot_patient{args.isolated}_tasks{'_'.join(map(str, task_numbers))}.png"))
+    plt.close()
+
+    plt.figure()
+    plt.plot(train_history["epoch"], train_history["accuracy"], label="Train Accuracy")
+    plt.plot(validate_history["epoch"], validate_history["accuracy"], label="Validate Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.savefig(os.path.join(results_dir, f"accuracy_plot_patient{args.isolated}_tasks{'_'.join(map(str, task_numbers))}.png"))
+    plt.close()
 #
 #    print(subjects_pd_status_years)
 

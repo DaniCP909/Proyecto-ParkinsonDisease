@@ -60,6 +60,6 @@ class PahawOfflineSimDataset(Dataset):
             y = torch.tensor(vec, dtype=torch.float32)
 
         # Devolver 4 valores como espera tu pipeline
-        return x, y, patient.id, idx
+        return x, y, patient.id, idx, self.task_nums
     
 

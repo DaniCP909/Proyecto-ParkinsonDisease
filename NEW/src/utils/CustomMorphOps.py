@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import cv2
+import random
 
 def fit_into_normalized_canvas(img, max_h, max_w):
     final_w = int(round_up_to(max_w, 50) * .5)
@@ -129,24 +130,131 @@ def crop_black_columns(img):
     no_black_columns = img[:, mask]
     return no_black_columns
 
-def restore_full_width(img, cropped_img):
+def restore_full_width(cropped_img, original_w):
     """
     Restore the width of the original image by filling the removed columns.
     If fill_value is None, the cropped image will be repeated (tiled) horizontally.
     Otherwise, the remaining columns are filled with the specified value (e.g., 255 for white).
     """
-    full_h, full_w = img.shape
     reduced_h, reduced_w = cropped_img.shape
-    n_copies = int(np.ceil(full_w / reduced_w))
-    tiled = np.tile(cropped_img, (1, n_copies))[:, :full_w]
+    n_copies = int(np.ceil(original_w / reduced_w))
+    tiled = np.tile(cropped_img, (1, n_copies))[:, :original_w]
     return tiled
 
-def clean_and_refill(img):
+def clean_and_refill(img, original_w):
     """
     Complete pipeline: remove black columns and restore width.
     If fill_value is None, repeats the cropped image to fill the width.
     If fill_value is specified (e.g., 255), fills the removed area with that value.
     """
     cropped_img = crop_black_columns(img)
-    final_result = restore_full_width(img, cropped_img)
+    final_result = restore_full_width(cropped_img, original_w)
     return final_result
+
+def apply_saltpepper(raw_img):
+    img = raw_img.copy()
+
+    # Getting the dimensions of the image
+    row , col = img.shape
+    
+    # Randomly pick some pixels in the
+    # image for coloring them white
+    # Pick a random number between 300 and 10000
+    number_of_pixels = random.randint(300, 900)
+    for i in range(number_of_pixels):
+      
+        # Pick a random y coordinate
+        y_coord=random.randint(0, row - 1)
+        
+        # Pick a random x coordinate
+        x_coord=random.randint(0, col - 1)
+        
+        # Color that pixel to white
+        img[y_coord][x_coord] = 255
+        
+    # Randomly pick some pixels in
+    # the image for coloring them black
+    # Pick a random number between 300 and 10000
+    number_of_pixels = random.randint(300 , 900)
+    for i in range(number_of_pixels):
+      
+        # Pick a random y coordinate
+        y_coord=random.randint(0, row - 1)
+        
+        # Pick a random x coordinate
+        x_coord=random.randint(0, col - 1)
+        
+        # Color that pixel to black
+        img[y_coord][x_coord] = 0
+        
+    return img
+
+def shear(img, sh_factor):
+    if sh_factor == 0.0:
+        return img
+
+    h, w = img.shape
+
+    # Desplazamiento máximo
+    dx = abs(sh_factor) * h
+    new_width = int(w + dx)
+
+    # Compensación si el shear es negativo
+    tx = dx if sh_factor < 0 else 0
+
+    matrix = np.float32([
+        [1, sh_factor, tx],
+        [0, 1, 0]
+    ])
+
+    return cv2.warpAffine(
+        img,
+        matrix,
+        (new_width, h),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0
+    )
+
+
+def crop_to_content(img, bg_color):
+    """
+    Recorta la imagen al bounding box del contenido
+    """
+    # Contenido = todo lo que no sea fondo
+    mask = img != bg_color
+
+    # Seguridad: por si no hay contenido
+    if not np.any(mask):
+        return img
+
+    ys, xs = np.where(mask)
+    y_min, y_max = ys.min(), ys.max()
+    x_min, x_max = xs.min(), xs.max()
+
+    return img[y_min:y_max+1, x_min:x_max+1]
+
+def rotate(img, angle):
+    if angle == 0:
+        return img
+    
+    padding = 200
+
+    h, w = img.shape[:2]
+    center = ((w) // 2, (h) // 2)
+
+    canvas = np.zeros((h + padding, w + padding), dtype=img.dtype)
+
+    hc, wc = canvas.shape[:2]
+
+    canvas[(padding // 2):(padding//2)+h, (padding // 2):(padding//2)+w] = img
+
+
+    matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+    rotated_img = cv2.warpAffine(canvas, matrix, (wc, hc))
+
+    cropped = crop_to_content(rotated_img, bg_color=0)
+
+    resized = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_AREA)
+
+    return resized

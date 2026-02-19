@@ -32,4 +32,7 @@ class PahawSplitter:
         train_dict = {pid: self.patients[pid] for pid in train_ids}
         val_dict = {pid: self.patients[pid] for pid in val_ids}
 
+        print(train_dict)
+        print(val_dict)
+
         return train_dict, val_dict

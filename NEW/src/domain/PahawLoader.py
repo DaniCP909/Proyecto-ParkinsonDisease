@@ -8,7 +8,13 @@ from domain.RepresentationType import RepresentationType
 from domain.Patient import Patient
 import numpy as np
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
 
 Y = 0
 X = 1
@@ -43,6 +49,7 @@ class PahawLoader:
         cache_dir = "cache"
         os.makedirs(cache_dir, exist_ok=True)
 
+
         #Pahaw data file
         pahaw_file_path = os.path.join(
             BASE_DIR,
@@ -52,8 +59,10 @@ class PahawLoader:
         )
         pahaw_data_frame = pandas.read_excel(pahaw_file_path)
 
+
+
         #Pahaw tasks files
-        task_file_path_start = os.path.join("PaHaW", "PaHaW_public")
+        task_file_path_start = os.path.join(BASE_DIR, "PaHaW", "PaHaW_public")
         task_file_path_end = "_1.svc"
 
         #ids, status and years lists
@@ -172,6 +181,8 @@ class PahawLoader:
         #print(subjects_pd_status_years_dict)
 
         print(f"MEDIDAS FINALES: {self.global_max_w}, {self.global_max_h}")
+        print(BASE_DIR)
+
 
         #subject_ii = 0
         #while subject_ii < len(subjects_id_list):

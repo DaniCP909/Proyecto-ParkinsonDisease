@@ -413,10 +413,10 @@ def load() -> tuple[dict[int, tuple[int, int]], dict[int, dict[int, Task]]]:
     el valor es una tupla con el estado PD y los años PD y en el otro una lista con las
     tareas 2, 3 y 4 del sujeto.
     """
-
-    pahaw_file_path = os.path.join("PaHaW", "PaHaW_files", "corpus_PaHaW.xlsx")
+    root = "/home/dcorredor/github/Proyecto-ParkinsonDisease/NEW"
+    pahaw_file_path = os.path.join(root, "PaHaW", "PaHaW_files", "corpus_PaHaW.xlsx")
     pahaw_data_frame = pandas.read_excel(pahaw_file_path)
-    task_file_path_start = os.path.join("PaHaW", "PaHaW_public")
+    task_file_path_start = os.path.join(root, "PaHaW", "PaHaW_public")
     task_file_path_end = "_1.svc"
     subjects_id_list = list(map(int, pahaw_data_frame["ID"].to_list()))
     subjects_pd_status_list = [

@@ -5,7 +5,7 @@ import cv2
 
 from matplotlib import pyplot as plt
 
-from utils.CustomMorphOps import normalize, simple_bresenham_line, bresenham_line, fit_into_normalized_canvas, clean_and_refill
+from utils.CustomMorphOps import normalize, simple_bresenham_line, bresenham_line, fit_into_normalized_canvas
 
 from domain.Stroke import Stroke
 from domain.LetterSet import LetterSet
@@ -85,13 +85,9 @@ class Task:
 
             result = self._rep_simple_stroke()
             normalized = fit_into_normalized_canvas(result, final_h, final_w)
-            if not task1:
-                cr_result = clean_and_refill(normalized)
-            else:
-                cr_result = normalized
-            write_img = (cr_result * 255).astype(np.uint8)
+            write_img = (normalized * 255).astype(np.uint8)
             cv2.imwrite(cache_simple, write_img)
-            self.data = cr_result
+            self.data = normalized
             self.data_cache_path = cache_simple
             return
         
@@ -103,14 +99,10 @@ class Task:
                 return
             result = self._rep_enhanced_stroke()
             normalized = fit_into_normalized_canvas(result, final_h, final_w)
-            if not task1:
-                cr_result = clean_and_refill(normalized)
-            else:
-                cr_result = normalized
-            write_img = (cr_result * 255).astype(np.uint8)
+            write_img = (normalized * 255).astype(np.uint8)
 
             cv2.imwrite(cache_enhanced, write_img)
-            self.data = cr_result
+            self.data = normalized
             self.data_cache_path = cache_enhanced
             return
         
@@ -144,6 +136,8 @@ class Task:
     def _rep_simple_stroke(self):
         final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
         final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
+        if final_h == 0 or final_w == 0:
+            print(f"[DEBUG] Subject {self.subject_id} task {self.task_number} -> H: {final_h}, W: {final_w}")
         canvas = np.zeros((final_h, final_w), dtype=np.float32)
         
         for letters_set in self.letters_sets_list:
@@ -171,6 +165,8 @@ class Task:
     def _rep_enhanced_stroke(self, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
         final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
         final_h = int(self.max_vals['y_surface'] - self.min_vals['y_surface'])
+        if final_h == 0 or final_w == 0:
+            print(f"[DEBUG] Subject {self.subject_id} task {self.task_number} -> H: {final_h}, W: {final_w}")
         canvas = np.ones((final_h, final_w), dtype=np.float32)
         for letters_set in self.letters_sets_list:
             for stroke in letters_set.strokes_list:
