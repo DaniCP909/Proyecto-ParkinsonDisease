@@ -8,3 +8,5 @@ runs
 dataset_images
 analysis
 cache
+/NEW/src/logs
+/NEW/src/results_singletask_isolated

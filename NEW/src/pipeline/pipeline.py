@@ -4,8 +4,11 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Dataset, DataLoader, Subset
 import models.OfflineCnnLstm as cnnlstm
 import models.OfflineCnnOnly as cnnonly
+import models.OfflineViTLstm as vitlstm
+import models.OfflineViT as vit
 from datasets.PahawOfflineSimDataset import PahawOfflineSimDataset
 from datasets.PahawOfflineSimWindowDataset import PahawOfflineSimWindowDataset
+from datasets.PahawOfflineProgresiveStrokeDataset import PahawOfflineProgresiveStrokeDataset
 import os
 import cv2
 import numpy as np
@@ -17,6 +20,9 @@ from domain.Patient import Patient
 
 from utils.EarlyStopping import EarlyStopping
 
+from utils.CustomMorphOps import fit_into_normalized_canvas, clean_and_refill, apply_saltpepper, shear, rotate
+from scipy.ndimage import grey_dilation
+
 wrong_predicts = {
     "2": [5, 16, 17, 21, 24, 27, 31, 32, 35, 36, 38, 39, 46, 52, 56, 60, 64, 65, 70, 71, 72], #batch_size=2
     "3": [4, 5, 9, 19, 21, 27, 31, 32, 35, 36, 39, 42, 44, 47, 50, 56, 65, 71],
@@ -27,13 +33,39 @@ wrong_predicts = {
     "8": [1, 2, 3, 6, 11, 16, 17, 18, 20, 22, 23, 24, 25, 27, 30, 32, 37, 39, 45, 46, 49, 51, 52, 59, 64, 65, 71, 72],
 }
 
+SRC_BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
 
-def save_dataset_images(path=None, dataset: Dataset=None, train_validate=None, data_dict=None, tasks_nums=None):
+dataset_images_dir = os.path.join(SRC_BASE_DIR, "dataset_images")
+analysis_dir = os.path.join(SRC_BASE_DIR, "analysis")
+
+def aux_augment(img):
+    rotated = False
+    original_w = img.shape[1]
+    kernel = np.ones((3, 3))
+    random_num = torch.randint(0, 4, (1,)).item()
+    if random_num == 0:
+        sh = np.random.uniform(-0.3, 0.3)
+        img =shear(img, sh)
+    if random_num == 1:
+        rotated = True
+        angle = np.random.uniform(-3, 3)
+        img = clean_and_refill(img, original_w)
+        img = rotate(img, angle)
+    if random_num == 2:
+        img = grey_dilation(img, footprint=kernel)
+    if not rotated: img = clean_and_refill(img, original_w)
+    return img
+
+def save_dataset_images(path=dataset_images_dir, dataset: Dataset=None, train_validate=None, data_dict=None, tasks_nums=None):
     if dataset is None:
         print("Dataset not provided.")
         return
-    if path is None:
-        path = f"/home/dcorredor/github/Proyecto-ParkinsonDisease/NEW/dataset_images"
     os.makedirs(path, exist_ok=True)
 
     tasks_str = "".join(str(t) for t in tasks_nums) if tasks_nums else "none"
@@ -52,6 +84,8 @@ def save_dataset_images(path=None, dataset: Dataset=None, train_validate=None, d
 
         img = patient.getTaskByTypeAndNum(RepresentationType.ENHANCED_STROKE, t_number).data
 
+        img = aux_augment(img)
+
         if isinstance(img, torch.Tensor):
             img = img.detach().cpu().numpy()
         if img.ndim == 3 and img.shape[0] == 1:
@@ -64,11 +98,12 @@ def save_dataset_images(path=None, dataset: Dataset=None, train_validate=None, d
         cv2.imwrite(filename, img_uint8)
     return images_filename
 
-def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis2", tasks_nums=None, train_val="train", model=None, idx_list=[]):
+def generate_analysis_csv(preds, targets, filenames, confidences, path=analysis_dir, tasks_nums=None, train_val="train", model=None, idx_list=[]):
     """
     Creates a CSV with train and validate results
     filename, target, predict, confidence
     """
+
     if not (len(preds) == len(targets) == len(filenames) == len(confidences)):
         raise ValueError("List parameters have different length")
     
@@ -99,15 +134,15 @@ def generate_analysis_csv(preds, targets, filenames, confidences, path="analysis
     
 
 
-def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=None, validate_kargs=None, writer=None, task_nums=[2]):
-    train_dataset = PahawOfflineSimWindowDataset(train_data, None, 100, 50, task_nums, RepresentationType.ENHANCED_STROKE, "binary", augment=True)
-    val_dataset = PahawOfflineSimWindowDataset(validate_data, None, 100, 50, task_nums, RepresentationType.ENHANCED_STROKE, "binary", augment=False)
+def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=None, validate_kargs=None, writer=None, task_nums=[2], global_h=None, global_w=None):
+    train_dataset = PahawOfflineSimWindowDataset(patients_dict=train_data, transform=None, patch_w=300, stepsize=150, task_nums=task_nums, rep_type=RepresentationType.ENHANCED_STROKE, augment=True, global_max_w=global_w)
+    val_dataset = PahawOfflineSimWindowDataset(patients_dict=validate_data, transform=None, patch_w=300, stepsize=150, task_nums=task_nums, rep_type=RepresentationType.ENHANCED_STROKE, augment=True, global_max_w=global_w)
 
 #    patches_tensor, label, _, _ = train_dataset[0]
 #    print(f"SHAPE: {patches_tensor.shape}")
 #
-    train_filenames = save_dataset_images(dataset=train_dataset, train_validate="train", data_dict=train_data, path="dataset_images", tasks_nums=task_nums)
-    val_filenames = save_dataset_images(dataset=val_dataset, train_validate="validate", data_dict=validate_data, path="dataset_images", tasks_nums=task_nums)
+    #train_filenames = save_dataset_images(dataset=train_dataset, train_validate="train", data_dict=train_data, tasks_nums=task_nums)
+    #val_filenames = save_dataset_images(dataset=val_dataset, train_validate="validate", data_dict=validate_data, tasks_nums=task_nums)
 
     train_loader = DataLoader(train_dataset, **train_kargs)
     val_loader = DataLoader(val_dataset, **validate_kargs)
@@ -127,7 +162,7 @@ def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=
     }
 
 
-    model = cnnlstm.OfflineCnnLstm().to(device)
+    model = vit.OfflineViT().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
@@ -165,7 +200,7 @@ def run_pipeline(train_data, validate_data, args=None, device=None, train_kargs=
 #
 #    print("Fallos en índices:", errores)
 
-    generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_probs, train_val="train", model="CnnOnly", idx_list=train_idx, tasks_nums=task_nums)
-    generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_probs, train_val="validate", model="CnnOnly", idx_list=val_idx, tasks_nums=task_nums)
+    #generate_analysis_csv(preds=train_preds, targets=train_targets, filenames=train_filenames, confidences=train_probs, train_val="train", model="CnnOnly", idx_list=train_idx, tasks_nums=task_nums)
+    #generate_analysis_csv(preds=val_preds, targets=val_targets, filenames=val_filenames, confidences=val_probs, train_val="validate", model="CnnOnly", idx_list=val_idx, tasks_nums=task_nums)
 
     return model, train_history, validate_history

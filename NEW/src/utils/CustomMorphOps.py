@@ -4,8 +4,10 @@ import cv2
 import random
 
 def fit_into_normalized_canvas(img, max_h, max_w):
-    final_w = int(round_up_to(max_w, 50) * .5)
-    final_h = int(round_up_to(max_h, 16) * .5)
+    max_h = max_h
+    max_w = max_w
+    final_w = int(round_up_to(max_w, 50))
+    final_h = int(round_up_to(max_h, 16))
     canvas = np.zeros((final_h, final_w),dtype=np.float32)
     img_h, img_w = img.shape
 
@@ -124,31 +126,56 @@ def normalize(values: list[int], fallback: float = 0.5) -> list[int]:
 
 def crop_black_columns(img):
     """
-    Remove columns tah are completely black (all zeros)
+    Remove columns that are completely black (all zeros).
+    Keeps internal spacing structure intact.
     """
     mask = ~(img == 0).all(axis=0)
     no_black_columns = img[:, mask]
     return no_black_columns
 
-def restore_full_width(cropped_img, original_w):
-    """
-    Restore the width of the original image by filling the removed columns.
-    If fill_value is None, the cropped image will be repeated (tiled) horizontally.
-    Otherwise, the remaining columns are filled with the specified value (e.g., 255 for white).
-    """
-    reduced_h, reduced_w = cropped_img.shape
-    n_copies = int(np.ceil(original_w / reduced_w))
-    tiled = np.tile(cropped_img, (1, n_copies))[:, :original_w]
-    return tiled
 
-def clean_and_refill(img, original_w):
+def restore_full_width(cropped_img, original_w, fill_value=0):
     """
-    Complete pipeline: remove black columns and restore width.
-    If fill_value is None, repeats the cropped image to fill the width.
-    If fill_value is specified (e.g., 255), fills the removed area with that value.
+    Restore the width of the original image using padding instead of tiling.
+
+    The original content is kept on the left side and the remaining
+    area is filled with a constant value (default: black).
     """
-    cropped_img = crop_black_columns(img)
-    final_result = restore_full_width(cropped_img, original_w)
+
+    reduced_h, reduced_w = cropped_img.shape
+
+    result = np.full(
+        (reduced_h, original_w),
+        fill_value,
+        dtype=cropped_img.dtype
+    )
+
+    result[:, :reduced_w] = cropped_img
+
+    return result
+
+
+def clean_and_refill(img, original_w, remove_black_columns=False, fill_value=0):
+    """
+    Complete preprocessing pipeline.
+
+    Options:
+    - Keep natural spacing between letters/words.
+    - Optionally remove fully black columns.
+    - Restore original width using padding instead of repetition.
+    """
+
+    if remove_black_columns:
+        processed_img = crop_black_columns(img)
+    else:
+        processed_img = img
+
+    final_result = restore_full_width(
+        processed_img,
+        original_w,
+        fill_value=fill_value
+    )
+
     return final_result
 
 def apply_saltpepper(raw_img):

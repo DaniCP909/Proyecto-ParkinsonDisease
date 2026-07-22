@@ -40,26 +40,23 @@ class PahawLoader:
         #self.subject_tasks_dict = {}
         self.patients_dicts = {}
 
-        self.global_max_w = 0
+        #self.global_max_w = 0
+        self.global_max_resized_w = 0
+        self.global_max_resized_w_id = -1
+        self.w_task = -1
         self.global_max_h = 0
+        self.global_max_h_id = -1
         self.global_max_w_task1 = 0
         self.global_max_h_task1 = 0
-
-        #CACHE
-        cache_dir = "cache"
-        os.makedirs(cache_dir, exist_ok=True)
-
 
         #Pahaw data file
         pahaw_file_path = os.path.join(
             BASE_DIR,
-            "PaHaW",              # o "PaHaW" según nombre exacto de tu carpeta
+            "PaHaW",
             "PaHaW_files",
             "corpus_PaHaW.xlsx"
         )
         pahaw_data_frame = pandas.read_excel(pahaw_file_path)
-
-
 
         #Pahaw tasks files
         task_file_path_start = os.path.join(BASE_DIR, "PaHaW", "PaHaW_public")
@@ -74,9 +71,6 @@ class PahawLoader:
             map(int, pahaw_data_frame["Length of PD"].fillna(0).to_list())
         )
 
-        #Fill dicts
-        #subjects_pd_status_years_dict = {}
-        #subjects_tasks_dict = {}
         patients_dict = {}
         subject_i = 0
         while subject_i < len(subjects_id_list):
@@ -85,7 +79,6 @@ class PahawLoader:
                 subjects_pd_status_list[subject_i],
                 subjects_pd_years_list[subject_i],
             )
-            os.makedirs(os.path.join("generated_tasks", f"subject{subject_id}_GT{subjects_pd_status_list[subject_i]}"), exist_ok=True)
 
             new_patient = Patient(subject_id, pd_status_years[0], pd_status_years[1])
 
@@ -132,13 +125,11 @@ class PahawLoader:
                 else:
                     print(f"Archivo no encontrado: {task_file_path}, se omite.")
 
-                #subjects_pd_status_years_dict[subject_id] = pd_status_years
 
                 if task_strokes_list:    #si hay trazo
 
                     new_simple_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.SIMPLE_STROKE)
                     new_patient.addTask(new_simple_task)
-                    #new_simple_task.generate_data()
 
                     if task_number == 1:
                         if new_simple_task.getWidth() > self.global_max_w_task1:
@@ -147,51 +138,44 @@ class PahawLoader:
                         if new_simple_task.getHeight() > self.global_max_h_task1:
                             self.global_max_h_task1 = new_simple_task.getHeight()
                     else:
-                        if new_simple_task.getWidth() > self.global_max_w:
-                            self.global_max_w = new_simple_task.getWidth()
-
                         if new_simple_task.getHeight() > self.global_max_h:
                             self.global_max_h = new_simple_task.getHeight()
+                            self.global_max_h_id = subject_id
 
                     new_enhanced_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ENHANCED_STROKE)
                     new_patient.addTask(new_enhanced_task)
-                    #new_enhanced_task.generate_data()
 
                     new_multichannel_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.MULTICHANNEL)
                     new_patient.addTask(new_multichannel_task)
-                    #new_multichannel_task.generate_data()
 
                     new_online_signal_task = Task(subject_id, task_number, task_strokes_list, all_coords, pd_status_years[0], rep_type=RepresentationType.ONLINE_SIGNAL)
                     new_patient.addTask(new_online_signal_task)
 
                     patients_dict[subject_id] = new_patient
 
-                    #debug = (new_enhanced_task.data * 255).astype(np.uint8)
-
-                    #cv2.imwrite(f"tareas_generadas/img_{subject_id}_{task_number}.png", debug)
-
-                        #print(f"[CACHE] Guardada tarea {task_number} del sujeto {subject_id}")
-                    #if subject_id not in subjects_tasks_dict:
-                    #    subjects_tasks_dict[subject_id] = {}
-                    #subjects_tasks_dict[subject_id][task_number] = new_simple_task
                 else:
                     print(f"Tarea vacía para Sujeto {subject_id}, Tarea {task_number}, se omite.")
             subject_i += 1
-        #print(list(zip(subjects_id_list, subjects_pd_status_list)))
-        #print(subjects_pd_status_years_dict)
-
-        print(f"MEDIDAS FINALES: {self.global_max_w}, {self.global_max_h}")
-        print(BASE_DIR)
 
 
-        #subject_ii = 0
-        #while subject_ii < len(subjects_id_list):
-        #    subject_id = subjects_id_list[subject_ii]
-        #    for task_number in range(2,9):
-        #        task = subjects_tasks_dict[subject_id].get(task_number)
-        #        if task is not None:
-        #            task.generate_data(self.global_max_h, self.global_max_w)
-        #    subject_ii += 1
+        for patient_id, patient in patients_dict.items():
+            tasks_dicts_dict = patient.getTasksListsDict()
+            rep_key =RepresentationType.SIMPLE_STROKE
+            for task_key in tasks_dicts_dict[rep_key].keys():
+                if task_key != 1:
+                    task = tasks_dicts_dict[rep_key][task_key]
+                    tw = task.getWidth()
+                    th = task.getHeight()
+                    #print(f"ID: {patient_id}|task{task_key}: original_h: {th}, original_w: {tw}")
+                    h_resized_factor = self.global_max_h / th
+                    final_w = int(np.ceil(tw * h_resized_factor))
+                    if final_w > self.global_max_resized_w:
+                        self.global_max_resized_w = final_w
+                        self.global_max_resized_w_id = patient_id
+                        self.w_task = task_key
+
+        self.patients_dicts = patients_dict
+
         for patient_id, patient in patients_dict.items():
             tasks_dicts_dict = patient.getTasksListsDict()
             for rep_key in tasks_dicts_dict.keys():
@@ -200,12 +184,10 @@ class PahawLoader:
                     if task_key == 1:
                         task.generate_data(self.global_max_h_task1, self.global_max_w_task1, task1=True)
                     else:
-                        task.generate_data(self.global_max_h, self.global_max_w)
-                #print(f"Paciente {patient_id} len {key}: {len(tasks_lists)}")
-
-        #self.subjects_pd_status_years_dict = subjects_pd_status_years_dict
-        #self.subjects_tasks_dict = subjects_tasks_dict
+                        task.generate_data(self.global_max_h, self.global_max_resized_w)
         self.patients_dicts = patients_dict
+
+        print(f"MEDIDAS FINALES: H: {self.global_max_h} patient: {self.global_max_h_id}, W: {self.global_max_resized_w} patient: {self.global_max_resized_w_id} | task: {self.w_task}")
 
 
     def load(self):

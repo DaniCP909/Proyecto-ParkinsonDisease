@@ -6,7 +6,8 @@ import torch.nn.functional as F
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import resnet18
+from torchvision import models
+from torchvision.models import ResNet18_Weights
 
 
 class OfflineCnnLstm(nn.Module):
@@ -14,12 +15,12 @@ class OfflineCnnLstm(nn.Module):
         super().__init__()
 
         # 1) Backbone ResNet18
-        backbone = resnet18(pretrained=pretrained)
+        backbone = models.resnet18(weights=ResNet18_Weights.DEFAULT)
 
         # Cambiamos la primera conv para aceptar 1 canal
         # (resnet original espera 3 canales)
         backbone.conv1 = nn.Conv2d(
-            1, 64, kernel_size=7, stride=2, padding=3, bias=False
+            1, 64, kernel_size=1, stride=2, padding=3, bias=False
         )
 
         # Quitamos la FC final

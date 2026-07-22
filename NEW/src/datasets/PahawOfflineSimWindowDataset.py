@@ -23,6 +23,7 @@ class PahawOfflineSimWindowDataset(Dataset):
             rep_type: RepresentationType=RepresentationType.SIMPLE_STROKE,
             target_mode = "binary",
             augment=False,
+            global_max_w=None
             ):
         self.patients = list(patients_dict.values())  
         self.rep_type = rep_type
@@ -33,6 +34,7 @@ class PahawOfflineSimWindowDataset(Dataset):
         self.stepsize = stepsize
         self.kernel = np.ones((3, 3))
         self.augment=augment
+        self.global_max_w = global_max_w
 
         # Precomputamos todas las tareas
         self.samples = []
@@ -53,25 +55,41 @@ class PahawOfflineSimWindowDataset(Dataset):
         img = task.data
         original_w = img.shape[1]
 
+        rotated = False
+
         if self.augment:
-            random_num = torch.randint(0, 4, (1,)).item()
-            if random_num == 0:
-                sh = np.random.uniform(-0.3, 0.3)
-                img =shear(img, sh)
-            if random_num == 1:
-                angle = np.random.uniform(-3, 3)
-                img = rotate(img, angle)
-            if random_num == 2:
-                img = grey_dilation(img, footprint=self.kernel)
-        img = clean_and_refill(img, original_w)
+            #random_num = torch.randint(0, 4, (1,)).item()
+            #if random_num == 0:
+            #    sh = np.random.uniform(-0.3, 0.3)
+            #    img =shear(img, sh)
+            #if random_num == 1:
+            #    rotated = True
+            #    angle = np.random.uniform(-3, 3)
+            #    img = clean_and_refill(img, original_w)
+            #    img = rotate(img, angle)
+            #if random_num == 2:
+            #    img = grey_dilation(img, footprint=self.kernel)
+            angle = np.random.uniform(-3, 3)
+            img = clean_and_refill(img, self.global_max_w)
+            img = rotate(img, angle)
+        if not rotated: img = clean_and_refill(img, self.global_max_w)
 
         patches_list = patch_generator(
             img,
-            n_patches=patches_per_image(original_w, self.patch_w, self.stepsize),
+            n_patches=patches_per_image(self.global_max_w, self.patch_w, self.stepsize),
             patch_height=img.shape[0],
             patch_width=self.patch_w,
             stepsize=self.stepsize
         )
+        # Resize para ViT
+        patches_list = [
+            cv2.resize(
+                patch,
+                (224, 224),
+                interpolation=cv2.INTER_AREA
+            )
+            for patch in patches_list
+        ]
         patches_np = np.stack(patches_list, axis=0)
         patches = torch.from_numpy(patches_np).float()
 

@@ -11,6 +11,16 @@ from domain.Stroke import Stroke
 from domain.LetterSet import LetterSet
 from domain.RepresentationType import RepresentationType
 
+SRC_BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
+
+cache_dir = os.path.join(SRC_BASE_DIR, "cache")
+
 class Task:
     """Una tarea es una lista de cinco conjuntos de letras.
 
@@ -23,7 +33,7 @@ class Task:
         pd_predicted: int. 0 para H y 1 para PD.
     """
 
-    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke], all_coords: list[tuple[int, int, int, int, int, int, int]], pd_status=0, rep_type: RepresentationType = None, cache_base_dir = "cache"):
+    def __init__(self, subject_id: int, task_number: int, strokes_list: list[Stroke], all_coords: list[tuple[int, int, int, int, int, int, int]], pd_status=0, rep_type: RepresentationType = None, cache_base_dir = cache_dir):
         self.subject_id = subject_id
         self.task_number = task_number
         self.min_vals = {
@@ -69,6 +79,7 @@ class Task:
         """
         os.makedirs(self.cache_base_dir, exist_ok=True)
 
+
         #Cache path depending on RepresentationType
         base_name = f"{self.subject_id}_task{self.task_number}"
 
@@ -98,8 +109,9 @@ class Task:
                 self.data_cache_path = cache_enhanced
                 return
             result = self._rep_enhanced_stroke()
+            #print(f"Medidas: {final_h} / {final_w}")
             normalized = fit_into_normalized_canvas(result, final_h, final_w)
-            write_img = (normalized * 255).astype(np.uint8)
+            write_img = (result * 255).astype(np.uint8)
 
             cv2.imwrite(cache_enhanced, write_img)
             self.data = normalized
@@ -391,3 +403,9 @@ class Task:
             self.pd_predicted = 0
         else:
             self.pd_predicted = 1
+
+    def get_min_vals(self):
+        return self.min_vals
+    
+    def get_max_vals(self):
+        return self.max_vals
