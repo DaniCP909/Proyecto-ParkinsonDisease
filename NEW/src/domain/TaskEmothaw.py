@@ -185,8 +185,9 @@ class TaskEmothaw:
                         if 0 <= y < final_h and 0 <= x < final_w:
                             canvas[y, x] = 1.0
         
-        flip_img = cv2.flip(canvas, 0)
-        return flip_img
+        flip_img = cv2.flip(canvas, 1)
+        flip_img2 = cv2.flip(flip_img, 0)
+        return flip_img2
 
     def _rep_enhanced_stroke(self, min_thickness = 2, max_thickness = 10, min_dark_factor = 0.7, max_dark_factor = 0.99):
         final_w = int(self.max_vals['x_surface'] - self.min_vals['x_surface'])
